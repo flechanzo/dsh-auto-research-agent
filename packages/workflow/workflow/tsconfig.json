@@ -18,6 +18,12 @@
       "path": "../../core/agent"
     },
     {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../fs/fs"
+    },
+    {
       "path": "../../core/session"
     },
     {
@@ -25,6 +31,12 @@
     },
     {
       "path": "../../llm/llm"
+    },
+    {
+      "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../web/web"
     },
     {
       "path": "../../runtime-diagnostics/invariants"

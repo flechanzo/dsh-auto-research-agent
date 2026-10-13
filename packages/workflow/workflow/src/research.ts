@@ -38,7 +38,7 @@ export interface ResearchArtifact {
   /** Stable artifact id within one research session. */
   readonly artifactId: string
   /** Artifact category used by the UI renderer and final planner. */
-  readonly kind: 'paper' | 'summary' | 'problem' | 'literature' | 'idea' | 'review' | 'simulation' | 'plan'
+  readonly kind: 'paper' | 'summary' | 'problem' | 'literature' | 'idea' | 'review' | 'simulation' | 'plan' | 'decision'
   /** User-visible title. */
   readonly title: string
   /** Markdown content shown to the user. */
@@ -237,6 +237,40 @@ export function addResearchFeedback(state: ResearchState, feedback: string): Res
 }
 
 /**
+ * Select the expert roles that will review the next idea. The roles are kept
+ * in the selected node's immutable memory snapshot so a historical branch
+ * cannot silently change the review roster of another branch.
+ * @param state - Current research state.
+ * @param reviewerRoles - Non-blank role labels in display order.
+ * @returns The state with the selected node's review roster updated.
+ */
+export function setResearchReviewerRoles(
+  state: ResearchState,
+  reviewerRoles: readonly string[],
+): ResearchState {
+  const node = selectedResearchNode(state)
+  const roles = reviewerRoles.map(role => role.trim()).filter(role => role.length > 0)
+  if (roles.length === 0) return state
+  const updated: ResearchNode = {
+    ...node,
+    memorySnapshot: { ...node.memorySnapshot, reviewerRoles: [...roles] },
+  }
+  return { ...state, nodes: { ...state.nodes, [node.nodeId]: updated } }
+}
+
+/**
+ * Mark the selected final node complete after its output has been written.
+ * @param state - Current research state.
+ * @returns The state with the selected node marked complete.
+ */
+export function completeResearchNode(state: ResearchState): ResearchState {
+  const node = selectedResearchNode(state)
+  if (node.status === 'completed') return state
+  const completed: ResearchNode = { ...node, status: 'completed', userDecision: 'confirm' }
+  return { ...state, nodes: { ...state.nodes, [node.nodeId]: completed } }
+}
+
+/**
  * Reject an idea and start a fresh idea-generation branch from the problem
  * summary. The rejected branch remains readable and immutable.
  * @param state - Current research state.
@@ -244,8 +278,21 @@ export function addResearchFeedback(state: ResearchState, feedback: string): Res
  * @returns The state with a new active idea branch.
  */
 export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
-  const source = Object.values(state.nodes).find(node => node.stage === 'problem-summary')
-  if (source === undefined) throw new Error('research problem summary is required before rejecting an idea')
+  let source = selectedResearchNode(state)
+  while (source.stage !== 'problem-summary' && source.parentNodeId !== undefined) {
+    const parent = state.nodes[source.parentNodeId]
+    if (parent === undefined) break
+    source = parent
+  }
+  if (source.stage !== 'problem-summary') {
+    const fallback = Object.values(state.nodes).find(node => node.stage === 'problem-summary')
+    if (fallback === undefined) throw new Error('research problem summary is required before rejecting an idea')
+    source = fallback
+  }
+  const visibleArtifactIds = selectedResearchNode(state).memorySnapshot.artifactIds.filter((artifactId) => {
+    const artifact = state.artifacts[artifactId]
+    return artifact?.kind === 'summary' || artifact?.kind === 'problem' || artifact?.kind === 'literature'
+  })
   const branchId = `branch-${state.nextBranchNumber}`
   const nodeId = `node-${state.nextNodeNumber}`
   const node: ResearchNode = {
@@ -256,7 +303,7 @@ export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
     status: 'active',
     artifactRefs: [],
     ...(reason.trim() === '' ? {} : { userNote: reason.trim() }),
-    memorySnapshot: source.memorySnapshot,
+    memorySnapshot: { artifactIds: visibleArtifactIds, feedback: [], reviewerRoles: [] },
   }
   return {
     ...state,

@@ -31,11 +31,13 @@ export {
   addResearchFeedback,
   appendResearchOutput,
   assertInnovationClaim,
+  completeResearchNode,
   confirmResearchNode,
   continueFromResearchNode,
   createResearchState,
   rejectIdea,
   selectResearchNode,
+  setResearchReviewerRoles,
   selectedResearchNode,
 } from './research.ts'
 export type {
@@ -49,6 +51,31 @@ export type {
   ResearchStage,
   ResearchState,
 } from './research.ts'
+export {
+  createAttachmentPaperReader,
+  createHostResearchCoordinator,
+  createSubagentResearchRunner,
+  createWebLiteratureSearcher,
+  renderResearchPlan,
+  ResearchCoordinator,
+} from './research-coordinator.ts'
+export type {
+  ResearchAdvanceRequest,
+  ResearchAdvanceResult,
+  ResearchAgentRole,
+  ResearchAgentRunner,
+  ResearchCoordinatorAdapters,
+  ResearchLiteratureSearcher,
+  ResearchLiteratureSource,
+  ResearchPaperDocument,
+  ResearchPaperReader,
+  ResearchPlanFile,
+  ResearchPlanWriter,
+  ResearchSimulationInput,
+  ResearchSimulationRunner,
+  HostResearchCoordinatorOptions,
+  HostResearchCoordinatorServices,
+} from './research-coordinator.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

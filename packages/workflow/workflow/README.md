@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Run a plain-JavaScript orchestration script that fans work out to subagents and returns the script's final JSON value. Scripts can use `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()`; models normally access them through the `workflow` tool. Each run belongs to its caller, attributes every child to the invoking agent, resolves failures and cancellation without rejecting its result, and awaits script and child cleanup during disposal. The caller must supply an execution engine, allowing the isolation strategy to change without altering visible behavior.
 
+The Host-only `ResearchCoordinator` is the second workflow surface. It advances a paper-reading and literature-research DAG one confirmed stage at a time, delegates summarization, idea generation, refinement, and parallel reviews through injected adapters, and renders a Markdown plan from the selected branch. `createHostResearchCoordinator()` assembles the attachment, web, subagent, and Session filesystem adapters for a configured profile.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)
@@ -56,6 +58,10 @@ A returned run exposes `id`, `meta`, `result`, `cancel(reason?)`, and `dispose()
 
 A script that does not parse, a malformed meta block, an unavailable provider route, or an unsupported per-run limit is rejected synchronously before a run exists; the `workflow` tool reports these as errors the model can correct from. During execution, hook misuse — bad arguments, unknown options, unsupported schemas, tripped caps — kills the script loudly rather than dissolving into a per-item `null`. An ordinary child failure is not an infrastructure error: `agent()` resolves `null` and the script decides how to handle it.
 
+### Human-confirmed research runs
+
+`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads a durable `FileAttachmentRef`, searches through `ctx.web`, runs named subagent roles, writes the final Markdown file through `ctx.fs`, and leaves simulation as an explicit optional adapter. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -77,6 +83,8 @@ The package separates the script, run, result, and event contracts from executio
 | [`src/index.ts`](src/index.ts) | Service definition, `workflow/*` event declarations, `WorkflowError` and its fatal flag |
 | [`src/types.ts`](src/types.ts) | Browser-safe vocabulary: `WorkflowMeta`, `WorkflowResult`, run and agent event info |
 | [`src/runtime-types.ts`](src/runtime-types.ts) | Host-only `WorkflowStartRequest` and `WorkflowRun` handles |
+| [`src/research.ts`](src/research.ts) | Browser-safe research DAG, branch memory, confirmations, and innovation validation |
+| [`src/research-coordinator.ts`](src/research-coordinator.ts) | Host coordinator and attachment, web, subagent, simulation, and plan-file adapters |
 | [`src/invariant.ts`](src/invariant.ts) | Invariant companion: event pairing and identity checks |
 
 ### Lifecycle and ownership
@@ -129,6 +137,7 @@ These limits define what the capability does not yet support. They are current c
 - **No saved or nested workflows** — the capability starts caller-supplied scripts only, and a workflow script receives no `workflow()` hook for recursive orchestration.
 - **No token-budget vocabulary** — engines cap concurrency, items, and children, but neither the request nor the result accounts for model tokens across children.
 - **Runs are holder-owned, not service-tracked** — unloading the engine does not discover independent live handles; every consumer must dispose the run it started.
+- **Research state is not a Session event yet** — the coordinator returns immutable state to its caller; a profile must provide a sidecar or RPC projection before a browser reload can resume it. The PDF reader accepts text and simple text-bearing PDFs; deployments needing scanned or compressed PDFs must replace the reader adapter.
 
 <a id="dev-note"></a>
 ### Dev Note

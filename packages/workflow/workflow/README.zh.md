@@ -11,6 +11,8 @@ kind: "package-reference"
 
 运行一段纯 JavaScript 编排脚本，将工作扇出给 subagent，并返回脚本的最终 JSON 值。脚本可以使用 `agent()`、`parallel()`、`pipeline()`、`phase()` 和 `log()`；模型通常通过 `workflow` 工具访问它们。每次运行都归调用方所有，将每个子 agent（智能体）归属于调用它的 agent，在失败或取消时以结果兑现而不拒绝，并在 dispose（资源释放）期间等待脚本与子 agent 清理完成。调用方必须提供执行引擎，因此可以更换隔离策略而不改变可见行为。
 
+仅 Host 使用的 `ResearchCoordinator` 是第二个工作流面。它按确认逐阶段推进论文阅读与文献研究 DAG，通过注入的适配器委派摘要、想法生成、完善和并行审查，并从当前分支渲染 Markdown 方案。`createHostResearchCoordinator()` 为指定 profile 组装附件、Web、subagent 和 Session 文件系统适配器。
+
 ## 目录
 
 - [使用本包](#use-this-package)
@@ -56,6 +58,10 @@ return { reviewed: reviews.length }
 
 无法解析的脚本、格式错误的 meta 块、不可用的提供方路由或不受支持的单次运行限制，都会在运行存在之前被同步拒绝；`workflow` 工具把这些报告为模型可以修正的错误。执行期间，钩子误用——错误参数、未知选项、不支持的 schema、超出上限——会明确终止脚本，而不会转为逐项 `null`。普通子 agent 失败不是基础设施错误：`agent()` 以 `null` 兑现，由脚本决定如何处理。
 
+### 人工确认式科研运行
+
+`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取持久化 `FileAttachmentRef`，通过 `ctx.web` 检索，运行命名的 subagent 角色，通过 `ctx.fs` 写入最终 Markdown 文件，并把仿真保留为显式可选适配器。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -77,6 +83,8 @@ return { reviewed: reviews.length }
 | [`src/index.ts`](src/index.ts) | 服务定义、`workflow/*` 事件声明、`WorkflowError` 及其 fatal 标志 |
 | [`src/types.ts`](src/types.ts) | 浏览器安全词汇：`WorkflowMeta`、`WorkflowResult`、运行与 agent 事件信息 |
 | [`src/runtime-types.ts`](src/runtime-types.ts) | 仅宿主的 `WorkflowStartRequest` 与 `WorkflowRun` 句柄 |
+| [`src/research.ts`](src/research.ts) | 浏览器安全的科研 DAG、分支记忆、确认与创新点校验 |
+| [`src/research-coordinator.ts`](src/research-coordinator.ts) | Host 协调器以及附件、Web、subagent、仿真和方案文件适配器 |
 | [`src/invariant.ts`](src/invariant.ts) | 不变式伴生插件：事件配对与身份校验 |
 
 ### 生命周期与归属
@@ -129,6 +137,7 @@ return { reviewed: reviews.length }
 - **没有已保存或嵌套工作流**——该能力只启动调用方提供的脚本，工作流脚本不会收到用于递归编排的 `workflow()` 钩子。
 - **没有 token 预算词汇**——引擎限制并发、条目与子 agent，但请求与结果都不会统计跨子 agent 的模型 token。
 - **运行由持有方负责，不由服务跟踪**——卸载引擎不会发现独立的活动句柄；每个消费方都必须 dispose 自己启动的运行。
+- **科研状态尚未成为 Session 事件**——协调器把不可变状态返回给调用方；profile 需要提供 sidecar 或 RPC projection，浏览器重载后才能恢复。PDF 读取器支持文本和简单的文本型 PDF；扫描件或压缩 PDF 需要替换读取适配器。
 
 <a id="dev-note"></a>
 ### 开发备注
