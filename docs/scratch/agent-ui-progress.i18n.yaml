@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for agent-ui-progress.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/scratch/agent-ui-progress.md
+/web-agent-selection-ui-progress:
+  en: 0affcb55f381baa8
+  zh: a485e21775555761
+/web-agent-selection-ui-progress/current-status:
+  en: eb34aeb4682dcfeb
+  zh: f485ee99b3a9956a
+/web-agent-selection-ui-progress/verification-evidence:
+  en: 6f9b2435ff02af48
+  zh: 2edec6b5b37b14c1
+/web-agent-selection-ui-progress/next-phase:
+  en: 8ed254aa1d8c02a3
+  zh: b04d02c8054a5e77
+/web-agent-selection-ui-progress/dev-note:
+  en: b6d66a17be774419
+  zh: 7ba35567f01b35cf
