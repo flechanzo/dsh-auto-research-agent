@@ -26,6 +26,10 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"
     },
+    "./research": {
+      "types": "./lib/types/research.d.ts",
+      "default": "./lib/research.js"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },

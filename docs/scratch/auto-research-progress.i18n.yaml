@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for auto-research-progress.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/scratch/auto-research-progress.md
+/auto-research-workflow-progress:
+  en: ed0c54e4adbf5487
+  zh: 908bb0ce27993b5e
+/auto-research-workflow-progress/current-status:
+  en: d774ced7f963467d
+  zh: fd9a119b79da65b3
+/auto-research-workflow-progress/verification-evidence:
+  en: c6aadbddcde6c4e0
+  zh: 4d382cd6208b8993
+/auto-research-workflow-progress/next-checkpoint:
+  en: 77db8a9d3ecc8889
+  zh: 2ebfed2adfef6d26
+/auto-research-workflow-progress/dev-note:
+  en: ff69e6db58a82713
+  zh: 0afb3042a4a12995

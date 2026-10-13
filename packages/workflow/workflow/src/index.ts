@@ -27,6 +27,28 @@ export type {
   WorkflowStopReason,
 } from './types.ts'
 export type { WorkflowRun, WorkflowStartRequest } from './runtime-types.ts'
+export {
+  addResearchFeedback,
+  appendResearchOutput,
+  assertInnovationClaim,
+  confirmResearchNode,
+  continueFromResearchNode,
+  createResearchState,
+  rejectIdea,
+  selectResearchNode,
+  selectedResearchNode,
+} from './research.ts'
+export type {
+  ResearchArtifact,
+  ResearchBranch,
+  ResearchDecision,
+  ResearchMemorySnapshot,
+  ResearchNode,
+  ResearchNodeStatus,
+  ResearchOutputInput,
+  ResearchStage,
+  ResearchState,
+} from './research.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
