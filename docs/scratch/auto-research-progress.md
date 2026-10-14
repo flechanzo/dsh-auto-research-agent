@@ -13,6 +13,7 @@ This temporary page records the implementation checkpoints for the human-in-the-
 - **Web workflow surface — complete for the first milestone.** The existing workflow UI now contributes an `Auto research workflow` action in the Session header and a right-Sidebar page with paper upload, stage output, confirmation, feedback, rejection branches, history navigation, reviewer roles, and simulation/final-plan choice.
 - **Host coordinator — second milestone complete.** `ResearchCoordinator` now advances only confirmed nodes, reads durable paper attachments, searches through `ctx.web`, delegates summarization, problem extraction, idea generation, refinement, and parallel method/novelty/reproducibility reviews, preserves rejected ideas in isolated branches, and writes a branch-scoped Markdown plan through `ctx.fs` when assembled with `createHostResearchCoordinator()`.
 - **Browser integration and resume — current milestone complete.** The Web panel now reads and writes the Session-scoped `research` Remote, uploads paper bytes through `ctx.fileUpload`, renders returned artifacts, persists a revision-checked DAG sidecar, and restores state after reload. The Host and Client project graphs, generated Typert Remote artifacts, API Remote aggregation, and Web profile rows are wired. The local Web profile starts without a `research-controller` import warning.
+- **Agent selector entry — current UI fix complete.** The new-session hero now labels the existing preset control as `Agent`, and the Web bundle ships an `Auto research agent` preset. Selecting it gives the agent the research workflow prompt and keeps the existing paper, web-search, subagent, review, and plan tools available.
 
 ## Verification evidence
 
@@ -24,7 +25,7 @@ This temporary page records the implementation checkpoints for the human-in-the-
 
 ## Current checkpoint
 
-Pause after local DSH installation, Host build, and Web startup smoke validation. The next checkpoint adds a concrete simple-simulation adapter, stronger PDF extraction, deliverable presentation, and end-to-end Remote coverage after user confirmation.
+Pause after local DSH installation, Host build, Web startup smoke validation, and the selector fix. Choose `Agent: Auto research agent` on the new-session hero before sending the first message. The next checkpoint adds a concrete simple-simulation adapter, stronger PDF extraction, deliverable presentation, and end-to-end Remote coverage after user confirmation.
 
 ## Dev Note
 

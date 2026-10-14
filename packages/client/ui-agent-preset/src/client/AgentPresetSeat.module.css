@@ -49,6 +49,13 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.seatPrefix {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .seatLabel {
   min-width: 0;
   overflow: hidden;

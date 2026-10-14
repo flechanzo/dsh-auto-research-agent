@@ -8,6 +8,7 @@ export type AgentPresetSettingsKey =
   | 'builtInGroup'
   | 'customGroup'
   | 'seatHint'
+  | 'seatLabel'
   | 'headerHint'
   | 'nav'
   | 'sectionIntro'
@@ -21,6 +22,8 @@ export type AgentPresetSettingsKey =
   | 'presetMinimalDescription'
   | 'presetCordisName'
   | 'presetCordisDescription'
+  | 'presetResearchName'
+  | 'presetResearchDescription'
   | 'inUse'
   | 'noDescription'
   | 'brokenBadge'
@@ -37,6 +40,7 @@ export const en: Record<AgentPresetSettingsKey, string> = {
   sectionIntro: 'Choose the agent’s tools and how it works. Use Standard mode for everyday tasks, or Creator mode to add capabilities to DSH.',
 
   seatHint: 'Choose the agent preset for your new task',
+  seatLabel: 'Agent',
   headerHint: 'The agent preset chosen when this task started',
   nav: 'Agent presets',
 
@@ -55,6 +59,9 @@ export const en: Record<AgentPresetSettingsKey, string> = {
   presetCordisName: 'Creator mode',
   presetCordisDescription:
     'Customize DSH through conversation. Let the agent write plugins that add features or UI, or combine tools and prompts to create your own mode.',
+  presetResearchName: 'Auto research agent',
+  presetResearchDescription:
+    'Read an uploaded paper, extract research questions, search related work, develop novel improvements, and produce a reviewable research plan.',
 
   inUse: 'New task default',
 
@@ -78,6 +85,7 @@ export const zh: Record<AgentPresetSettingsKey, string> = {
   sectionIntro: '选择 Agent 的工具和工作方式。日常任务用「标准模式」，扩展 DSH 的能力用「创造模式」。',
 
   seatHint: '选择新任务使用的 Agent 预设',
+  seatLabel: '智能体',
   headerHint: '本任务的 Agent 预设，在任务开始时确定',
   nav: 'Agent 预设',
 
@@ -92,6 +100,8 @@ export const zh: Record<AgentPresetSettingsKey, string> = {
   presetMinimalDescription: 'Agent 仅使用终端工具完成任务，适合测试和对比其基础表现。',
   presetCordisName: '创造模式',
   presetCordisDescription: '用对话定制 DSH：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。',
+  presetResearchName: '自动科研智能体',
+  presetResearchDescription: '读取上传论文、提炼研究问题、联网检索相关工作、提出创新改进，并生成可审查的科研方案。',
 
   inUse: '新任务默认',
 

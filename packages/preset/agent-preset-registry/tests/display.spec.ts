@@ -16,6 +16,13 @@ describe('presetDisplayText', () => {
     })
   })
 
+  it('resolves the automatic research preset through its dictionary keys', () => {
+    expect(presetDisplayText({ id: 'research' }, t)).toEqual({
+      name: 't:presetResearchName',
+      description: 't:presetResearchDescription',
+    })
+  })
+
   it('keeps user-authored metadata untranslated', () => {
     expect(presetDisplayText({ id: 'mine', name: '我的模式', description: '自述' }, t))
       .toEqual({ name: '我的模式', description: '自述' })

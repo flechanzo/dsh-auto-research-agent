@@ -13,6 +13,7 @@
 - **Web 工作流界面——第一阶段已完成。** 现有工作流 UI 在会话标题栏增加“自动科研流程”入口，并在右侧 Sidebar 提供论文上传、阶段输出、确认、反馈、拒绝分支、历史导航、审查角色和仿真/科研方案选择。
 - **Host 协调器——第二阶段已完成。** `ResearchCoordinator` 现在只推进已确认节点，读取持久化论文附件，通过 `ctx.web` 检索，委派摘要、问题提炼、想法生成、完善以及方法／创新性／可复现性并行审查，在独立分支中保留被拒绝想法，并在使用 `createHostResearchCoordinator()` 组装时通过 `ctx.fs` 写入当前分支的 Markdown 方案。
 - **浏览器接入与恢复——当前阶段已完成。** Web 面板现在读写 Session-scoped `research` Remote，通过 `ctx.fileUpload` 上传论文字节，渲染返回的 artifact，使用带 revision 检查的 DAG sidecar 持久化，并在刷新后恢复状态。Host／Client project graph、生成的 Typert Remote artifact、API Remote 聚合和 Web profile 行均已接线。本地 Web profile 启动时不再出现 `research-controller` 导入警告。
+- **智能体选择入口——当前界面修复已完成。** 新会话首页现在把原有 preset 控件明确标为“智能体”，Web bundle 新增“自动科研智能体”。选择后会加载科研流程提示词，并保留论文、联网检索、子智能体、审查和方案工具。
 
 ## 验证证据
 
@@ -24,7 +25,7 @@
 
 ## 当前检查点
 
-在本地安装 DSH、完成 Host 构建和 Web 启动冒烟验证后暂停。用户确认后再加入具体的简单仿真适配器、更强的 PDF 提取、deliverable 展示和端到端 Remote 覆盖。
+在本地安装 DSH、完成 Host 构建、Web 启动冒烟验证和选择器修复后暂停。发送第一条消息前，在新会话首页通过“智能体：自动科研智能体”下拉选择它。用户确认后再加入具体的简单仿真适配器、更强的 PDF 提取、deliverable 展示和端到端 Remote 覆盖。
 
 ## 开发备注
 
