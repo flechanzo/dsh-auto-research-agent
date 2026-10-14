@@ -2,6 +2,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionTarget } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -10,7 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { WorkflowRunPanel, type WorkflowRunInjected } from './WorkflowRunPanel.tsx'
-import { ResearchPanel } from './ResearchPanel.tsx'
+import { ResearchPanel, type ResearchPanelInjected } from './ResearchPanel.tsx'
 import { ResearchTitle } from './ResearchTitle.tsx'
 import { ResearchAction, type ResearchActionInjected } from './ResearchAction.tsx'
 import { researchDefinition, RESEARCH_ID, RESEARCH_KIND } from './research-definition.ts'
@@ -38,6 +39,7 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => sidebarTabs.register(researchDefinition(t)), 'ui-workflow-run: research tab type')
     ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab', key: RESEARCH_ID, locale: NS,
+      inject: (): ResearchPanelInjected => ({ research: ctx.remote.research, fileUpload: ctx.fileUpload }),
     }, ResearchPanel))
     ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab.title', key: RESEARCH_ID, locale: NS,

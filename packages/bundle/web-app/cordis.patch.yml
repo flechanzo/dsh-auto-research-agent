@@ -102,6 +102,10 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
+    # Session-scoped automatic research workflow and durable branch state.
+    - id: research-controller
+      name: '@deepseek-ai/dsh-api-research-controller'
+
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
     - id: job-controller

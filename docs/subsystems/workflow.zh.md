@@ -135,6 +135,75 @@ interface WorkflowRun {
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxresearchcontroller--researchcontroller"></a>
+
+### `ctx.researchController` — `ResearchController`
+
+Host service backing `ctx.remote.research`.
+
+```ts cordis-catalog
+/**
+ * Read one persisted research DAG without resuming its Agent.
+ * @param request - Session identity to read.
+ * @returns The current durable research snapshot.
+ */
+@Remote('read') async read(request: ResearchReadRequest): Promise<ResearchSnapshot>
+
+/**
+ * Upload a paper and run the paper-reading and summarization step.
+ * @param request - Session, revision, and uploaded paper reference.
+ * @param signal - Cancellation signal for attachment and agent work.
+ * @returns The committed snapshot and newly visible summary artifact.
+ */
+@Remote('upload') upload(request: ResearchUploadRequest, signal: AbortSignal): Promise<ResearchCommandValue>
+
+/**
+ * Confirm the current output and run exactly one next stage.
+ * @param request - Session, revision, reviewer roles, and optional final choice.
+ * @param signal - Cancellation signal for coordinator work.
+ * @returns The committed snapshot and stage output when one is generated.
+ */
+@Remote('confirm') confirm(request: ResearchConfirmRequest, signal: AbortSignal): Promise<ResearchCommandValue>
+
+/**
+ * Save human feedback without running a model step.
+ * @param request - Session, revision, and feedback text.
+ * @returns The committed snapshot containing the feedback.
+ */
+@Remote('feedback') feedback(request: ResearchFeedbackRequest): Promise<ResearchCommandValue>
+
+/**
+ * Reject the selected idea, create an isolated branch, and generate its first idea.
+ * @param request - Session, revision, and optional rejection reason.
+ * @param signal - Cancellation signal for coordinator work.
+ * @returns The committed snapshot and replacement idea artifact.
+ */
+@Remote('reject') reject(request: ResearchRejectRequest, signal: AbortSignal): Promise<ResearchCommandValue>
+
+/**
+ * Select an existing branch without mutating its historical nodes.
+ * @param request - Session, revision, and branch identity.
+ * @returns The committed snapshot with the branch selected.
+ */
+@Remote('selectBranch') selectBranch(request: ResearchSelectBranchRequest): Promise<ResearchCommandValue>
+
+/**
+ * Select a historical node for inspection.
+ * @param request - Session, revision, and node identity.
+ * @returns The committed snapshot with the node selected.
+ */
+@Remote('selectNode') selectNode(request: ResearchSelectNodeRequest): Promise<ResearchCommandValue>
+
+/**
+ * Continue from a historical node in a new isolated branch.
+ * @param request - Session, revision, and source node identity.
+ * @returns The committed snapshot with the continuation selected.
+ */
+@Remote('continueFromNode') continueFromNode(request: ResearchContinueRequest): Promise<ResearchCommandValue>
+```
+
+Source: [`packages/api/research-controller/src/index.ts`](../../packages/api/research-controller/src/index.ts)
+
 <a id="ctxworkflowengine--workflowengine-abstract-seam"></a>
 
 ### `ctx.workflowEngine` — `WorkflowEngine` (abstract seam)

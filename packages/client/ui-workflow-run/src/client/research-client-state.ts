@@ -6,7 +6,7 @@
  */
 import type {
   ResearchArtifact, ResearchNode, ResearchOutputInput, ResearchState,
-} from '@deepseek-ai/dsh-workflow/research'
+} from '@deepseek-ai/dsh-workflow'
 
 /** Create the first paper-upload node for one browser tab.
  * @returns A new browser research state.
@@ -146,6 +146,21 @@ export function continueFromResearchNode(state: ResearchState, nodeId: string): 
 export function selectResearchNode(state: ResearchState, nodeId: string): ResearchState {
   if (state.nodes[nodeId] === undefined) throw new Error(`research node "${nodeId}" is missing`)
   return { ...state, selectedNodeId: nodeId }
+}
+
+/** Select an existing branch without creating a continuation.
+ * @param state - Current browser state.
+ * @param branchId - Branch to display.
+ * @returns The next browser state.
+ */
+export function selectResearchBranch(state: ResearchState, branchId: string): ResearchState {
+  const branch = state.branches[branchId]
+  if (branch === undefined) throw new Error(`research branch "${branchId}" is missing`)
+  const nodeId = branch.nodeIds.at(-1)
+  if (nodeId === undefined || state.nodes[nodeId] === undefined) {
+    throw new Error(`research branch "${branchId}" has no selectable node`)
+  }
+  return { ...state, activeBranchId: branchId, selectedNodeId: nodeId }
 }
 
 /** Require an explicit innovation claim in an idea artifact.

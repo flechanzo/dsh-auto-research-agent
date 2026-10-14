@@ -218,6 +218,29 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-job-controller -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-research-controller -->
+<a id="deepseek-aidsh-api-research-controller"></a>
+
+## `@deepseek-ai/dsh-api-research-controller`
+
+- `inject`: `attachments` · `fs` · `sessionController` · `storageDomain` · `subagents` · `typert` · `web`
+- `source`: [`packages/api/research-controller/src/index.ts:146`](../packages/api/research-controller/src/index.ts)
+
+```ts config-catalog
+/** Host limits and provider selection for automatic research. */
+export interface Config {
+  /** Registered subagent provider used for summarization, ideation, and review. */
+  readonly subagentProvider?: string
+  /** Relative output path inside the Session workspace. */
+  readonly planPath?: string
+  /** Maximum uploaded paper bytes read into the summarizer prompt. */
+  readonly maxPaperBytes?: number
+  /** Maximum Web sources included in one literature step. */
+  readonly maxLiteratureResults?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-research-controller -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-session-controller -->
 <a id="deepseek-aidsh-api-session-controller"></a>
 

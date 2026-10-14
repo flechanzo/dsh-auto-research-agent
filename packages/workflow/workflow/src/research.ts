@@ -214,7 +214,11 @@ export function appendResearchOutput(
 export function confirmResearchNode(state: ResearchState): ResearchState {
   const node = selectedResearchNode(state)
   if (node.status !== 'awaiting-confirmation' && node.status !== 'active') return state
-  const confirmed: ResearchNode = { ...node, status: 'confirmed', userDecision: 'confirm' }
+  const confirmed: ResearchNode = {
+    ...node,
+    status: 'confirmed',
+    ...(node.userDecision === 'feedback' ? { userDecision: 'feedback' } : { userDecision: 'confirm' }),
+  }
   return { ...state, nodes: { ...state.nodes, [node.nodeId]: confirmed } }
 }
 
@@ -339,9 +343,11 @@ export function continueFromResearchNode(state: ResearchState, nodeId: string): 
     parentNodeId: source.nodeId,
     branchId,
     stage: source.stage,
-    status: 'active',
+    status: source.status,
     artifactRefs: source.artifactRefs,
     memorySnapshot: source.memorySnapshot,
+    ...(source.userDecision === undefined ? {} : { userDecision: source.userDecision }),
+    ...(source.userNote === undefined ? {} : { userNote: source.userNote }),
   }
   return {
     ...state,
@@ -370,6 +376,21 @@ export function continueFromResearchNode(state: ResearchState, nodeId: string): 
 export function selectResearchNode(state: ResearchState, nodeId: string): ResearchState {
   if (state.nodes[nodeId] === undefined) throw new Error(`research node "${nodeId}" is missing`)
   return { ...state, selectedNodeId: nodeId }
+}
+
+/** Select the latest node of an existing branch without creating a continuation.
+ * @param state - Research state to inspect.
+ * @param branchId - Existing branch to display and receive later appends.
+ * @returns The state with the branch selected.
+ */
+export function selectResearchBranch(state: ResearchState, branchId: string): ResearchState {
+  const branch = state.branches[branchId]
+  if (branch === undefined) throw new Error(`research branch "${branchId}" is missing`)
+  const nodeId = branch.nodeIds.at(-1)
+  if (nodeId === undefined || state.nodes[nodeId] === undefined) {
+    throw new Error(`research branch "${branchId}" has no selectable node`)
+  }
+  return { ...state, activeBranchId: branchId, selectedNodeId: nodeId }
 }
 
 /** Verify that a generated idea makes an explicit, non-empty innovation claim.

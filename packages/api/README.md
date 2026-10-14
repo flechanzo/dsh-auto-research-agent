@@ -27,6 +27,7 @@ The packages below provide the Remote layer; the package READMEs own the exhaust
 | Package | Role | ctx key |
 |---|---|---|
 | [`remotes/`](remotes/README.md) | Chooses which Host capabilities and events the Client can consume. | — |
+| [`research-controller/`](research-controller/README.md) | Exposes the Session-scoped automatic research workflow and its paper, branch, review, and plan commands. | `ctx.researchController` / `ctx.remote.research` |
 | [`gateway/`](gateway/README.md) | Carries typed unary calls, multiplexed streams with their Client uplinks, and forwarded Host events. | `ctx.typertGateway` / `ctx.remote` |
 | [`job-controller/`](job-controller/README.md) | Streams one background job's observation record to the Client. | `ctx.jobController` / `ctx.remote.job` |
 | [`session-controller/`](session-controller/README.md) | Owns Session commands, history streams, live control state, and Agent/Session identity policy. | `ctx.sessionController` / `ctx.remote.session` |

@@ -27,6 +27,7 @@ kind: "package-group"
 | 包 | 职责 | ctx key |
 |---|---|---|
 | [`remotes/`](remotes/README.zh.md) | 决定 Client 可以消费哪些 Host 能力与事件。 | — |
+| [`research-controller/`](research-controller/README.zh.md) | 暴露按 Session 作用域的自动科研工作流，以及论文、分支、审查和方案命令。 | `ctx.researchController` / `ctx.remote.research` |
 | [`gateway/`](gateway/README.zh.md) | 承载类型化一元调用、带 Client 上行的多路复用流，以及转发的 Host 事件。 | `ctx.typertGateway` / `ctx.remote` |
 | [`job-controller/`](job-controller/README.zh.md) | 把一个后台任务的观测 record 流式送到 Client。 | `ctx.jobController` / `ctx.remote.job` |
 | [`session-controller/`](session-controller/README.zh.md) | 拥有会话命令、历史记录流、实时控制状态与 Agent/Session 身份策略。 | `ctx.sessionController` / `ctx.remote.session` |

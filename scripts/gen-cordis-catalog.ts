@@ -133,6 +133,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   userQuestions: 'user-questions.md',
   web: 'web.md',
   workflowEngine: 'workflow.md',
+  researchController: 'workflow.md',
   webhookRuntime: 'webhook.md',
   workspaceRegistry: 'workspace.md',
   workspaceController: 'workspace.md',
@@ -933,6 +934,16 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   TerminalFrame: 'Browser terminal stream frames are owned by packages/api/terminal-controller/README.md',
   TerminalRetentionFrame: 'Browser terminal window holds are owned by packages/api/terminal-controller/README.md',
   WebTerminalId: 'Browser terminal identity is owned by packages/api/terminal-controller/README.md',
+  ResearchCommandValue: 'research Remote result contract is owned by packages/api/research-controller/README.md',
+  ResearchConfirmRequest: 'research Remote confirmation request is owned by packages/api/research-controller/README.md',
+  ResearchContinueRequest: 'research Remote history continuation request is owned by packages/api/research-controller/README.md',
+  ResearchFeedbackRequest: 'research Remote feedback request is owned by packages/api/research-controller/README.md',
+  ResearchReadRequest: 'research Remote read request is owned by packages/api/research-controller/README.md',
+  ResearchRejectRequest: 'research Remote rejection request is owned by packages/api/research-controller/README.md',
+  ResearchSelectBranchRequest: 'research Remote branch selection request is owned by packages/api/research-controller/README.md',
+  ResearchSelectNodeRequest: 'research Remote node selection request is owned by packages/api/research-controller/README.md',
+  ResearchSnapshot: 'research Remote snapshot contract is owned by packages/api/research-controller/README.md',
+  ResearchUploadRequest: 'research Remote upload request is owned by packages/api/research-controller/README.md',
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */

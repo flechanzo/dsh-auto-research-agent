@@ -37,6 +37,7 @@ export {
   createResearchState,
   rejectIdea,
   selectResearchNode,
+  selectResearchBranch,
   setResearchReviewerRoles,
   selectedResearchNode,
 } from './research.ts'

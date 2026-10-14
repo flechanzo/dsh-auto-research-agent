@@ -5,12 +5,14 @@ const CLIENT_FACE_INCLUDE: readonly string[] = []
 
 /** Packages exempted from automatic Client/Host treatment despite declaring `dsh.client`. */
 const CLIENT_FACE_EXCLUDE: readonly string[] = [
+  '@deepseek-ai/dsh-api-research-controller',
   '@deepseek-ai/dsh-api-session-controller',
   '@deepseek-ai/dsh-api-workspace-controller',
 ]
 
 /** Host-only packages whose peer relays are deliberately flattened. */
 const HOST_DEPENDENCY_PACKAGES: readonly string[] = [
+  '@deepseek-ai/dsh-api-research-controller',
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',
 ]
@@ -61,6 +63,18 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-scope': ['carrierKeyOf', 'createScope', 'scopeOf', 'scopeTarget'],
   '@deepseek-ai/dsh-session': ['SESSION_FORMAT_VERSION'],
   '@deepseek-ai/dsh-session-persistence': ['SessionPersistenceNotFoundError'],
+  '@deepseek-ai/dsh-storage-domain': ['defineDomain', 'domainTable'],
+  '@deepseek-ai/dsh-workflow': [
+    'addResearchFeedback',
+    'confirmResearchNode',
+    'continueFromResearchNode',
+    'createHostResearchCoordinator',
+    'createResearchState',
+    'rejectIdea',
+    'selectResearchBranch',
+    'selectResearchNode',
+    'setResearchReviewerRoles',
+  ],
 } as const satisfies HostDependencyExports
 
 /** Exact import specifier to reviewed runtime exports. */

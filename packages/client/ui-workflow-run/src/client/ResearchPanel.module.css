@@ -120,6 +120,15 @@
   line-height: 1.5;
 }
 
+.notice {
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-state-danger);
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-state-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .button,
 .primaryButton,
 .dangerButton {

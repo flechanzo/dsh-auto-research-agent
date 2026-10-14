@@ -56,6 +56,7 @@
     "@deepseek-ai/dsh-agent-tool-presentation": "workspace:*",
     "@deepseek-ai/dsh-api-job-controller": "workspace:*",
     "@deepseek-ai/dsh-api-remotes": "workspace:*",
+    "@deepseek-ai/dsh-api-research-controller": "workspace:*",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
     "@deepseek-ai/dsh-api-settings-controller": "workspace:*",
     "@deepseek-ai/dsh-api-terminal-controller": "workspace:*",

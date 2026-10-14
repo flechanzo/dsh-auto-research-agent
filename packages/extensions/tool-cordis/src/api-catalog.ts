@@ -1767,6 +1767,61 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'researchController',
+    summary: 'Host service backing `ctx.remote.research`.',
+    description: 'Host service backing `ctx.remote.research`.',
+    methods: [
+      {
+        signature: '@Remote(\'read\') async read(request: ResearchReadRequest): Promise<ResearchSnapshot>',
+        description: 'Read one persisted research DAG without resuming its Agent.',
+        parameters: [{ name: 'request', description: 'Session identity to read.' }],
+        returns: 'The current durable research snapshot.',
+      },
+      {
+        signature: '@Remote(\'upload\') upload(request: ResearchUploadRequest, signal: AbortSignal): Promise<ResearchCommandValue>',
+        description: 'Upload a paper and run the paper-reading and summarization step.',
+        parameters: [{ name: 'request', description: 'Session, revision, and uploaded paper reference.' }, { name: 'signal', description: 'Cancellation signal for attachment and agent work.' }],
+        returns: 'The committed snapshot and newly visible summary artifact.',
+      },
+      {
+        signature: '@Remote(\'confirm\') confirm(request: ResearchConfirmRequest, signal: AbortSignal): Promise<ResearchCommandValue>',
+        description: 'Confirm the current output and run exactly one next stage.',
+        parameters: [{ name: 'request', description: 'Session, revision, reviewer roles, and optional final choice.' }, { name: 'signal', description: 'Cancellation signal for coordinator work.' }],
+        returns: 'The committed snapshot and stage output when one is generated.',
+      },
+      {
+        signature: '@Remote(\'feedback\') feedback(request: ResearchFeedbackRequest): Promise<ResearchCommandValue>',
+        description: 'Save human feedback without running a model step.',
+        parameters: [{ name: 'request', description: 'Session, revision, and feedback text.' }],
+        returns: 'The committed snapshot containing the feedback.',
+      },
+      {
+        signature: '@Remote(\'reject\') reject(request: ResearchRejectRequest, signal: AbortSignal): Promise<ResearchCommandValue>',
+        description: 'Reject the selected idea, create an isolated branch, and generate its first idea.',
+        parameters: [{ name: 'request', description: 'Session, revision, and optional rejection reason.' }, { name: 'signal', description: 'Cancellation signal for coordinator work.' }],
+        returns: 'The committed snapshot and replacement idea artifact.',
+      },
+      {
+        signature: '@Remote(\'selectBranch\') selectBranch(request: ResearchSelectBranchRequest): Promise<ResearchCommandValue>',
+        description: 'Select an existing branch without mutating its historical nodes.',
+        parameters: [{ name: 'request', description: 'Session, revision, and branch identity.' }],
+        returns: 'The committed snapshot with the branch selected.',
+      },
+      {
+        signature: '@Remote(\'selectNode\') selectNode(request: ResearchSelectNodeRequest): Promise<ResearchCommandValue>',
+        description: 'Select a historical node for inspection.',
+        parameters: [{ name: 'request', description: 'Session, revision, and node identity.' }],
+        returns: 'The committed snapshot with the node selected.',
+      },
+      {
+        signature: '@Remote(\'continueFromNode\') continueFromNode(request: ResearchContinueRequest): Promise<ResearchCommandValue>',
+        description: 'Continue from a historical node in a new isolated branch.',
+        parameters: [{ name: 'request', description: 'Session, revision, and source node identity.' }],
+        returns: 'The committed snapshot with the continuation selected.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -6128,6 +6183,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RequestUserInput',
     declaration: 'export interface RequestUserInput {\n    readonly role: \'user\';\n    readonly content: UserMessage[\'content\'];\n    readonly id?: never;\n    readonly source?: never;\n}',
+  },
+  {
+    name: 'ResearchCommandValue',
+    declaration: 'export interface ResearchCommandValue {\n    readonly snapshot: ResearchSnapshot;\n    readonly artifact?: ResearchArtifact;\n    readonly planFile?: ResearchPlanFile;\n}',
+  },
+  {
+    name: 'ResearchConfirmRequest',
+    declaration: 'export interface ResearchConfirmRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly reviewerRoles?: readonly string[];\n    readonly finalChoice?: \'simulation\' | \'plan\';\n}',
+  },
+  {
+    name: 'ResearchContinueRequest',
+    declaration: 'export interface ResearchContinueRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly nodeId: string;\n}',
+  },
+  {
+    name: 'ResearchFeedbackRequest',
+    declaration: 'export interface ResearchFeedbackRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly feedback: string;\n}',
+  },
+  {
+    name: 'ResearchReadRequest',
+    declaration: 'export interface ResearchReadRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'ResearchRejectRequest',
+    declaration: 'export interface ResearchRejectRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly reason?: string;\n}',
+  },
+  {
+    name: 'ResearchSelectBranchRequest',
+    declaration: 'export interface ResearchSelectBranchRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly branchId: string;\n}',
+  },
+  {
+    name: 'ResearchSelectNodeRequest',
+    declaration: 'export interface ResearchSelectNodeRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly nodeId: string;\n}',
+  },
+  {
+    name: 'ResearchSnapshot',
+    declaration: 'export interface ResearchSnapshot {\n    readonly sessionId: SessionId;\n    readonly revision: number;\n    readonly state: ResearchState;\n}',
+  },
+  {
+    name: 'ResearchUploadRequest',
+    declaration: 'export interface ResearchUploadRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly paper: FileAttachmentRef;\n}',
   },
   {
     name: 'ResolvedAlwaysRetryPolicy',

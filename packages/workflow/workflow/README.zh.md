@@ -9,9 +9,9 @@ kind: "package-reference"
 
 ## 概述
 
-运行一段纯 JavaScript 编排脚本，将工作扇出给 subagent，并返回脚本的最终 JSON 值。脚本可以使用 `agent()`、`parallel()`、`pipeline()`、`phase()` 和 `log()`；模型通常通过 `workflow` 工具访问它们。每次运行都归调用方所有，将每个子 agent（智能体）归属于调用它的 agent，在失败或取消时以结果兑现而不拒绝，并在 dispose（资源释放）期间等待脚本与子 agent 清理完成。调用方必须提供执行引擎，因此可以更换隔离策略而不改变可见行为。
+运行一段 JavaScript 编排脚本，将工作扇出给 subagent，并返回最终 JSON 值。脚本通过 `workflow` 工具使用 `agent()`、`parallel()`、`pipeline()`、`phase()` 和 `log()`。每次运行都归调用方所有，记录子 agent（智能体）归属，并在 dispose（资源释放）期间等待脚本与子 agent 清理完成。调用方提供执行引擎。
 
-仅 Host 使用的 `ResearchCoordinator` 是第二个工作流面。它按确认逐阶段推进论文阅读与文献研究 DAG，通过注入的适配器委派摘要、想法生成、完善和并行审查，并从当前分支渲染 Markdown 方案。`createHostResearchCoordinator()` 为指定 profile 组装附件、Web、subagent 和 Session 文件系统适配器。
+仅 Host 使用的 `ResearchCoordinator` 按确认推进论文阅读与文献研究 DAG，委派摘要、想法生成、完善和并行审查，并从当前分支渲染 Markdown 方案。`createHostResearchCoordinator()` 组装附件、Web、subagent 和 Session 文件系统适配器。
 
 ## 目录
 

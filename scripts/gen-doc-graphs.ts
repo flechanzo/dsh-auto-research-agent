@@ -274,6 +274,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Streams one background job\'s observation record over the generated Remote namespace; the roster stays on the session control stream.',
   },
   {
+    key: 'researchController',
+    pkg: 'api-research-controller',
+    title: 'Host automatic-research Remote controller',
+    mode: 'core',
+    note: 'Owns the Session-scoped research DAG, revision-checked paper and feedback commands, branch history, and final Markdown plan output.',
+  },
+  {
     key: 'credentialsController',
     pkg: 'api-settings-controller',
     title: 'Host credential-surface Remote controller',

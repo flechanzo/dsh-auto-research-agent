@@ -1,0 +1,70 @@
+---
+description: "把带确认门的、按 Session 作用域的自动科研工作流暴露给 Web Client，提供持久化分支状态、论文上传、人工决策、审查和最终方案输出。"
+kind: "package-reference"
+---
+# Research Controller
+
+[English](README.md) | 中文
+
+## 概述
+
+`@deepseek-ai/dsh-api-research-controller` 通过 Host 的 `ctx.researchController` 服务和生成的 Client `ctx.remote.research` namespace 暴露按 Session 作用域的自动科研工作流。控制器把科研 DAG 保存在 `research` storage domain 中，拒绝过期的浏览器 revision，接收上传论文的引用，并返回每个已确认阶段的 artifact，供 Web 面板渲染下一阶段。最终确认的分支可以通过 Session 文件系统写入 Markdown 科研方案。
+
+## 目录
+
+- [使用本包](#use-this-package)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## 使用本包
+
+Host 控制器要求附件、Session 文件系统、Session controller、storage-domain、subagent、Typert 和 Web 服务。它打开一个 `research` domain，并为每个 Session 保存一行记录，因此浏览器刷新后可以恢复完整的不可变 DAG，而不必为每个 Session 打开一个数据库 domain。只有必须推进协调器的命令才会解析 Session Agent；读取操作不会恢复 Agent。
+
+Client 用 `research.read({ sessionId })` 读取当前 revision。`research.upload` 保存上传的 `FileAttachmentRef`，读取论文并返回待确认的摘要 artifact；下一次 `research.confirm` 才会运行问题提炼。之后每次确认推进一个阶段，`research.feedback` 保存人工反馈，`research.reject` 创建隔离的想法分支。`research.selectBranch` 和 `research.selectNode` 更改显示选择；`research.continueFromNode` 从历史节点创建新分支。每个改变状态的请求都携带 `expectedRevision`；过期值会以 `research/stale` 失败，调用方必须读取返回状态后再重试。
+
+控制器把提供方工作交给 `createHostResearchCoordinator()`。协调器读取附件，通过 `ctx.web` 检索文献，委派摘要、想法生成、完善以及并行审查给配置的 subagent provider，并通过 `ctx.fs` 写入选定的最终方案。仿真仍是显式的协调器适配器，在仿真或方案检查点通过 `research.confirm` 选择。
+
+### 配置
+
+| 字段 | 默认值 | 含义 |
+|---|---:|---|
+| `subagentProvider` | `spawn` | 用于科研阶段和审查的已注册 subagent provider |
+| `planPath` | `research-plan.md` | Session 工作区内的相对输出路径 |
+| `maxPaperBytes` | `20,971,520` | 读入摘要提示词的论文最大字节数 |
+| `maxLiteratureResults` | `8` | 一个文献检索阶段包含的最大 Web 结果数 |
+
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-api-research-controller)是所有受支持字段及其 JSDoc 的完整来源。
+
+<a id="model-experience"></a>
+## 模型体验
+
+间接通过 ResearchCoordinator 和配置的 subagent provider。
+
+#### KV 缓存影响
+
+无直接影响；控制器把模型工作委派给配置的 provider，不添加固定提示词前缀。
+
+## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- 内置读取器支持文本附件和简单的文本型 PDF。扫描件或压缩 PDF 需要替换附件读取器适配器。
+- 科研状态只存在于配置的 storage backend 所在进程。要在 Host 重启后保留状态，部署必须使用持久化 backend。
+- 一个 Host service 实例会串行执行命令。水平扩展部署必须把同一 Session 的命令路由到一个所有者，或增加共享写入围栏。
+- 文献检索和 subagent 审查依赖配置的 Web 与 subagent provider；缺少它们时，推进命令会返回提供方错误。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+本包拥有 Remote 投影和持久化 sidecar。workflow 包拥有状态转移与协调器行为；Web 包拥有右侧 Sidebar 展示与上传控件。
+
+</details>
+
+**运行时不变量：** 不发布 companion。控制器只投影持久化科研记录和工作流迁移；可检查的可变关系由 storage domain 与 workflow 包负责。

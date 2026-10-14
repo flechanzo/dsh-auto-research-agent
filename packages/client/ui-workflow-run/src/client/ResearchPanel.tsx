@@ -1,27 +1,30 @@
-import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { IconBranchOutlineRegular, IconCheckOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ResearchStage, ResearchState } from '@deepseek-ai/dsh-workflow/research'
-import {
-  addResearchFeedback,
-  appendResearchOutput,
-  assertInnovationClaim,
-  confirmResearchNode,
-  continueFromResearchNode,
-  createResearchState,
-  rejectIdea,
-  selectResearchNode,
-  selectedResearchNode,
-} from './research-client-state.ts'
+import type {
+  ResearchArtifact, ResearchCommandValue, ResearchNode, ResearchRemote, ResearchStage, ResearchState,
+} from '@deepseek-ai/dsh-api-research-controller/client'
+import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/client'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkflowRunKey } from './locales.ts'
 import css from './ResearchPanel.module.css'
 
 /** Props for the session-scoped right-sidebar page. */
-export type ResearchPanelProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'workflowRun'>
+export type ResearchPanelProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'workflowRun'> & ResearchPanelInjected
 
-const REVIEWER_KEYS = [
-  'research.reviewer.method', 'research.reviewer.novelty', 'research.reviewer.repro',
-] as const satisfies readonly WorkflowRunKey[]
+/** Host-backed services used by the research panel. */
+export interface ResearchPanelInjected {
+  /** Session-scoped automatic research Remote namespace. */
+  readonly research: ResearchRemote
+  /** Browser file upload service that returns an attachment reference. */
+  readonly fileUpload: FileUploadService
+}
+
+const REVIEWER_ROLES = [
+  { key: 'research.reviewer.method', role: 'method' },
+  { key: 'research.reviewer.novelty', role: 'novelty' },
+  { key: 'research.reviewer.repro', role: 'reproducibility' },
+] as const satisfies readonly { key: WorkflowRunKey; role: string }[]
 
 const STAGE_KEYS = {
   'paper-upload': 'research.paper-upload',
@@ -34,16 +37,6 @@ const STAGE_KEYS = {
   'simulation-or-final-plan': 'research.simulation-or-final-plan',
   'final-plan': 'research.final-plan',
 } as const satisfies Record<ResearchStage, WorkflowRunKey>
-
-const NEXT_STAGE: Partial<Record<ResearchStage, ResearchStage>> = {
-  'paper-read': 'problem-summary',
-  'problem-summary': 'literature-search',
-  'literature-search': 'idea-generation',
-  'idea-generation': 'idea-refinement',
-  'idea-refinement': 'multi-agent-review',
-  'multi-agent-review': 'simulation-or-final-plan',
-  'simulation-or-final-plan': 'final-plan',
-}
 
 function stageText(stage: ResearchStage, t: ResearchPanelProps['t']): string {
   return t(STAGE_KEYS[stage])
@@ -61,77 +54,159 @@ function statusText(status: ReturnType<typeof selectedResearchNode>['status'], t
   }
 }
 
-function placeholder(stage: ResearchStage, title: string, source: string | undefined, t: ResearchPanelProps['t']): { title: string; content: string; kind: 'summary' | 'problem' | 'literature' | 'idea' | 'review' | 'simulation' | 'plan' } {
-  switch (stage) {
-    case 'paper-read': return { title, kind: 'summary', content: t('research.placeholder.paperRead', { source: source ?? t('research.paper') }) }
-    case 'problem-summary': return { title, kind: 'problem', content: t('research.placeholder.problem') }
-    case 'literature-search': return { title, kind: 'literature', content: t('research.placeholder.literature') }
-    case 'idea-generation': return { title, kind: 'idea', content: t('research.placeholder.idea') }
-    case 'idea-refinement': return { title, kind: 'idea', content: t('research.placeholder.refinement') }
-    case 'multi-agent-review': return { title, kind: 'review', content: t('research.placeholder.review') }
-    case 'simulation-or-final-plan': return { title, kind: 'simulation', content: t('research.placeholder.choice') }
-    case 'final-plan': return { title, kind: 'plan', content: t('research.placeholder.plan') }
-    case 'paper-upload': return { title, kind: 'summary', content: '' }
-    default: throw new Error(`unsupported research stage ${stage satisfies never}`)
+function initialResearchState(label: string): ResearchState {
+  const node: ResearchNode = {
+    nodeId: 'node-1', branchId: 'branch-1', stage: 'paper-upload', status: 'active', artifactRefs: [],
+    memorySnapshot: { artifactIds: [], feedback: [], reviewerRoles: [] },
+  }
+  return {
+    nodes: { [node.nodeId]: node },
+    branches: { 'branch-1': { branchId: 'branch-1', label, nodeIds: [node.nodeId] } },
+    artifacts: {}, selectedNodeId: node.nodeId, activeBranchId: 'branch-1',
+    nextNodeNumber: 2, nextBranchNumber: 2, nextArtifactNumber: 1,
   }
 }
 
+function selectedResearchNode(state: ResearchState): ResearchNode {
+  const node = state.nodes[state.selectedNodeId]
+  if (node === undefined) throw new Error(`research node "${state.selectedNodeId}" is missing`)
+  return node
+}
+
+function latestArtifact(state: ResearchState, node: ResearchNode): ResearchArtifact | undefined {
+  const artifactId = node.artifactRefs[node.artifactRefs.length - 1]
+  return artifactId === undefined ? undefined : state.artifacts[artifactId]
+}
+
+function innovationClaimPasses(artifact: ResearchArtifact | undefined): boolean {
+  if (artifact === undefined || artifact.kind !== 'idea') return false
+  const text = artifact.content.toLowerCase()
+  return text.includes('创新') || text.includes('novel') || text.includes('innovation')
+}
+
+function failureText(failure: { readonly message: string; readonly code: string }, t: ResearchPanelProps['t']): string {
+  return failure.code === 'research/stale' ? t('research.error.stale') : t('research.error.operation', { message: failure.message })
+}
+
 /** Render the staged research workflow, its branches, artifacts, and checkpoints. */
-export function ResearchPanel({ useTabInfo, t }: ResearchPanelProps): ReactNode {
+export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }: ResearchPanelProps): ReactNode {
   const { tab } = useTabInfo()
-  const [state, setState] = useState<ResearchState>(() => createResearchState())
+  const [state, setState] = useState<ResearchState>()
+  const [revision, setRevision] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
   const [feedback, setFeedback] = useState('')
-  const [source, setSource] = useState<string>()
   const [choice, setChoice] = useState<'simulation' | 'plan'>('plan')
-  const [reviewers, setReviewers] = useState<readonly string[]>(REVIEWER_KEYS.map(key => t(key)))
+  const [reviewers, setReviewers] = useState<readonly string[]>(REVIEWER_ROLES.map(item => item.role))
   const inputRef = useRef<HTMLInputElement>(null)
-  const selected = selectedResearchNode(state)
-  const branch = state.branches[state.activeBranchId]
+  const displayState = state ?? initialResearchState(t('research.defaultBranch'))
+  const selected = selectedResearchNode(displayState)
+  const branch = displayState.branches[displayState.activeBranchId]
   const branchNodes = useMemo(
-    () => branch?.nodeIds.map(id => state.nodes[id]).filter(node => node !== undefined) ?? [],
-    [branch, state.nodes],
+    () => branch?.nodeIds.map(id => displayState.nodes[id]).filter(node => node !== undefined) ?? [],
+    [branch, displayState.nodes],
   )
-  const artifactId = selected.artifactRefs[selected.artifactRefs.length - 1]
-  const artifact = artifactId === undefined ? undefined : state.artifacts[artifactId]
+  const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
+  const artifact = latestArtifact(displayState, selected)
   const ideaNeedsReview = selected.stage === 'idea-generation' || selected.stage === 'idea-refinement'
 
-  const produce = (next: ResearchStage, paper?: string): void => {
-    const output = placeholder(next, stageText(next, t), paper, t)
-    setState(current => appendResearchOutput(current, {
-      stage: next,
-      title: output.title,
-      content: output.content,
-      kind: output.kind,
-      ...(paper === undefined ? {} : { source: paper }),
-    }))
+  useEffect(() => {
+    let disposed = false
+    const load = async (): Promise<void> => {
+      setLoading(true)
+      setError(undefined)
+      try {
+        const result = await research.read({ sessionId })
+        if (disposed) return
+        if (result.ok) {
+          setRevision(result.value.revision)
+          setState(result.value.state)
+        } else {
+          setError(failureText(result.error, t))
+        }
+      } catch {
+        if (!disposed) setError(t('research.error.request'))
+      } finally {
+        if (!disposed) setLoading(false)
+      }
+    }
+    void load()
+    return () => { disposed = true }
+  }, [research, sessionId, t])
+
+  useEffect(() => {
+    if (selected.memorySnapshot.reviewerRoles.length > 0) setReviewers(selected.memorySnapshot.reviewerRoles)
+  }, [selected.nodeId, selected.memorySnapshot.reviewerRoles])
+
+  const execute = async (operation: () => Promise<RemoteResult<ResearchCommandValue>>): Promise<boolean> => {
+    if (busy) return false
+    setBusy(true)
+    setError(undefined)
+    try {
+      const result = await operation()
+      if (!result.ok) {
+        setError(failureText(result.error, t))
+        return false
+      }
+      setRevision(result.value.snapshot.revision)
+      setState(result.value.snapshot.state)
+      return true
+    } catch {
+      setError(t('research.error.request'))
+      return false
+    } finally {
+      setBusy(false)
+    }
   }
 
   const upload = (event: ChangeEvent<HTMLInputElement>): void => {
     const file = event.target.files?.[0]
     if (file === undefined) return
-    setSource(file.name)
-    produce('paper-read', file.name)
     event.target.value = ''
+    void execute(async () => {
+      const uploaded = await fileUpload.upload(sessionId, file, file.name, tab.signal)
+      if (!uploaded.ok) return uploaded
+      return research.upload({ sessionId, expectedRevision: revision, paper: uploaded.value.file }, tab.signal)
+    })
   }
 
   const confirm = (): void => {
-    setState(current => confirmResearchNode(current))
-    const next = NEXT_STAGE[selected.stage]
-    if (next !== undefined) produce(next, source)
-    else if (selected.stage === 'final-plan') setState((current) => {
-      const currentNode = selectedResearchNode(current)
-      return { ...current, nodes: { ...current.nodes, [current.selectedNodeId]: { ...currentNode, status: 'completed' } } }
-    })
+    void execute(() => research.confirm({
+      sessionId, expectedRevision: revision,
+      reviewerRoles: reviewers,
+      ...(selected.stage === 'simulation-or-final-plan' ? { finalChoice: choice } : {}),
+    }, tab.signal))
   }
 
   const submitFeedback = (): void => {
     if (feedback.trim() === '') return
-    setState(current => addResearchFeedback(current, feedback))
-    setFeedback('')
+    void execute(() => research.feedback({ sessionId, expectedRevision: revision, feedback })).then((success) => {
+      if (success) setFeedback('')
+    })
+  }
+
+  const reject = (): void => {
+    void execute(() => research.reject({
+      sessionId, expectedRevision: revision,
+      ...(feedback.trim() === '' ? {} : { reason: feedback }),
+    }, tab.signal))
+  }
+
+  const selectBranch = (branchId: string): void => {
+    void execute(() => research.selectBranch({ sessionId, expectedRevision: revision, branchId }))
+  }
+
+  const selectNode = (nodeId: string): void => {
+    void execute(() => research.selectNode({ sessionId, expectedRevision: revision, nodeId }))
+  }
+
+  const continueFromNode = (nodeId: string): void => {
+    void execute(() => research.continueFromNode({ sessionId, expectedRevision: revision, nodeId }))
   }
 
   return (
-    <div className={css.root} data-research-panel data-tab-id={tab.id}>
+    <div className={css.root} data-research-panel data-tab-id={tab.id} aria-busy={loading || busy}>
       <div className={css.header}>
         <span className={css.title}>{t('research.title')}</span>
         <span className={css.subtle}>{stageText(selected.stage, t)}</span>
@@ -140,15 +215,13 @@ export function ResearchPanel({ useTabInfo, t }: ResearchPanelProps): ReactNode 
       <div>
         <div className={css.subtle}>{t('research.branch')}</div>
         <div className={css.branchRow} aria-label={t('research.branch')}>
-          {Object.values(state.branches).map(item => (
+          {Object.values(displayState.branches).map(item => (
             <button
               key={item.branchId}
               type="button"
-              className={item.branchId === state.activeBranchId ? `${css.branch} ${css.branchActive}` : css.branch}
-              onClick={() => {
-                const last = item.nodeIds[item.nodeIds.length - 1]
-                if (last !== undefined) setState(current => ({ ...selectResearchNode(current, last), activeBranchId: item.branchId }))
-              }}
+              className={item.branchId === displayState.activeBranchId ? `${css.branch} ${css.branchActive}` : css.branch}
+              onClick={() => { selectBranch(item.branchId) }}
+              disabled={busy || item.branchId === displayState.activeBranchId}
             >
               <IconBranchOutlineRegular size={13} /> {item.label}
             </button>
@@ -163,8 +236,9 @@ export function ResearchPanel({ useTabInfo, t }: ResearchPanelProps): ReactNode 
             <button
               key={node.nodeId}
               type="button"
-              className={node.nodeId === state.selectedNodeId ? `${css.node} ${css.nodeSelected}` : css.node}
-              onClick={() => setState(current => selectResearchNode(current, node.nodeId))}
+              className={node.nodeId === displayState.selectedNodeId ? `${css.node} ${css.nodeSelected}` : css.node}
+              onClick={() => { selectNode(node.nodeId) }}
+              disabled={busy || node.nodeId === displayState.selectedNodeId}
             >
               <span className={css.nodeStage}>{stageText(node.stage, t)}</span>
               <span className={css.nodeStatus}>{statusText(node.status, t)}</span>
@@ -176,52 +250,54 @@ export function ResearchPanel({ useTabInfo, t }: ResearchPanelProps): ReactNode 
       <div className={css.card}>
         <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
         <pre className={css.content}>{artifact?.content || t('research.emptyArtifact')}</pre>
+        {error !== undefined && <div className={css.notice} role="alert">{error}</div>}
         {selected.stage === 'paper-upload' && (
           <>
             <input ref={inputRef} className={css.fileInput} type="file" accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />
-            <button type="button" className={css.primaryButton} onClick={() => inputRef.current?.click()}>
+            <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={() => inputRef.current?.click()}>
               {t('research.upload')}
             </button>
             <span className={css.subtle}>{t('research.uploadHint')}</span>
           </>
         )}
-        {selected.status === 'awaiting-confirmation' && (
-          <button type="button" className={css.primaryButton} onClick={confirm}>
+        {!isHistorical && ((selected.status === 'awaiting-confirmation' || selected.status === 'confirmed')
+          || (selected.status === 'active' && selected.stage !== 'paper-upload')) && (
+          <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={confirm}>
             <IconCheckOutlineRegular size={14} /> {t('research.confirm')}
           </button>
         )}
-        {ideaNeedsReview && (
+        {!isHistorical && ideaNeedsReview && (
           <>
             <div className={css.subtle}>{t('research.innovation')}</div>
-            <textarea className={css.feedback} value={feedback} placeholder={t('research.feedbackPlaceholder')} onChange={event => setFeedback(event.target.value)} />
+            <textarea className={css.feedback} value={feedback} placeholder={t('research.feedbackPlaceholder')} onChange={(event) => { setFeedback(event.target.value) }} />
             <div className={css.actionRow}>
-              <button type="button" className={css.button} onClick={submitFeedback}>{t('research.feedback')}</button>
-              <button type="button" className={css.dangerButton} onClick={() => setState(current => rejectIdea(current, feedback))}>{t('research.reject')}</button>
+              <button type="button" className={css.button} disabled={busy || loading} onClick={submitFeedback}>{t('research.feedback')}</button>
+              <button type="button" className={css.dangerButton} disabled={busy || loading} onClick={reject}>{t('research.reject')}</button>
             </div>
             {selected.stage === 'idea-generation' && (
-              <span className={css.subtle}>{t('research.innovationCheck')}{(() => { try { if (artifact !== undefined) assertInnovationClaim(artifact); return t('research.pass') } catch { return t('research.needsWork') } })()}</span>
+              <span className={css.subtle}>{t('research.innovationCheck')}{innovationClaimPasses(artifact) ? t('research.pass') : t('research.needsWork')}</span>
             )}
           </>
         )}
-        {selected.stage === 'multi-agent-review' && (
+        {!isHistorical && selected.stage === 'multi-agent-review' && (
           <>
             <div className={css.subtle}>{t('research.roles')}</div>
             <div className={css.reviewerRow}>
-              {REVIEWER_KEYS.map((key) => {
+              {REVIEWER_ROLES.map(({ key, role }) => {
                 const label = t(key)
-                return <label key={key} className={css.reviewer}><input type="checkbox" checked={reviewers.includes(label)} onChange={event => setReviewers(current => event.target.checked ? [...current, label] : current.filter(item => item !== label))} />{label}</label>
+                return <label key={key} className={css.reviewer}><input type="checkbox" disabled={busy || loading} checked={reviewers.includes(role)} onChange={(event) => { setReviewers(current => event.target.checked ? [...current, role] : current.filter(item => item !== role)) }} />{label}</label>
               })}
             </div>
           </>
         )}
-        {selected.stage === 'simulation-or-final-plan' && (
+        {!isHistorical && selected.stage === 'simulation-or-final-plan' && (
           <div className={css.choiceRow}>
-            <button type="button" className={choice === 'simulation' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => setChoice('simulation')}><IconPlayOutlineRegular size={13} /> {t('research.simulate')}</button>
-            <button type="button" className={choice === 'plan' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => setChoice('plan')}>{t('research.plan')}</button>
+            <button type="button" disabled={busy || loading} className={choice === 'simulation' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => { setChoice('simulation') }}><IconPlayOutlineRegular size={13} /> {t('research.simulate')}</button>
+            <button type="button" disabled={busy || loading} className={choice === 'plan' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => { setChoice('plan') }}>{t('research.plan')}</button>
           </div>
         )}
         {selected.nodeId !== branch?.nodeIds[branch.nodeIds.length - 1] && (
-          <button type="button" className={css.button} onClick={() => setState(current => continueFromResearchNode(current, selected.nodeId))}>{t('research.continue')}</button>
+          <button type="button" disabled={busy || loading} className={css.button} onClick={() => { continueFromNode(selected.nodeId) }}>{t('research.continue')}</button>
         )}
       </div>
     </div>

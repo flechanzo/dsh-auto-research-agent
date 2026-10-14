@@ -54,12 +54,37 @@ describe('research workflow state', () => {
     })
     state = addResearchFeedback(state, '加入基线比较')
     expect(state.nodes[state.selectedNodeId]?.memorySnapshot.feedback).toEqual(['加入基线比较'])
-    expect(() => assertInnovationClaim({
-      artifactId: 'a', kind: 'idea', title: 'bad', content: '没有声明', createdAt: 0,
-    })).toThrow('innovation claim')
-    expect(() => assertInnovationClaim({
-      artifactId: 'a', kind: 'idea', title: 'good', content: '创新点：动态检索', createdAt: 0,
-    })).not.toThrow()
+    expect(() => {
+      assertInnovationClaim({
+        artifactId: 'a', kind: 'idea', title: 'bad', content: '没有声明', createdAt: 0,
+      })
+    }).toThrow('innovation claim')
+    expect(() => {
+      assertInnovationClaim({
+        artifactId: 'a', kind: 'idea', title: 'good', content: '创新点：动态检索', createdAt: 0,
+      })
+    }).not.toThrow()
+  })
+
+  it('preserves feedback as the decision when confirming a refinement', () => {
+    let state = appendResearchOutput(createResearchState(), {
+      stage: 'idea-refinement', kind: 'idea', title: '方案', content: 'innovation: gated retrieval',
+    })
+    state = addResearchFeedback(state, '补充消融实验')
+    state = confirmResearchNode(state)
+    expect(state.nodes[state.selectedNodeId]?.status).toBe('confirmed')
+    expect(state.nodes[state.selectedNodeId]?.userDecision).toBe('feedback')
+  })
+
+  it('keeps the source status when continuing from history', () => {
+    let state = appendResearchOutput(createResearchState(), {
+      stage: 'problem-summary', kind: 'problem', title: '问题', content: '问题内容',
+    })
+    state = addResearchFeedback(state, '调整问题范围')
+    state = confirmResearchNode(state)
+    state = continueFromResearchNode(state, state.selectedNodeId)
+    expect(state.nodes[state.selectedNodeId]?.status).toBe('confirmed')
+    expect(state.nodes[state.selectedNodeId]?.userDecision).toBe('feedback')
   })
 
   it('selects a historical node without changing the active branch', () => {

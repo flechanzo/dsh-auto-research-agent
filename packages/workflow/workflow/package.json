@@ -28,11 +28,11 @@
     },
     "./research": {
       "types": "./lib/types/research.d.ts",
-      "default": "./lib/research.js"
+      "default": "./lib/index.js"
     },
     "./research-coordinator": {
       "types": "./lib/types/research-coordinator.d.ts",
-      "default": "./lib/research-coordinator.js"
+      "default": "./lib/index.js"
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json"

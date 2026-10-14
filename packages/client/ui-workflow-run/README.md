@@ -27,7 +27,7 @@ Use `dsh-client-ui-workflow-run` to inspect each durable top-level workflow run 
 
 A top-level workflow run through `dsh-tool-workflow` appears in the conversation as its own node: expand the run to see its phases, and expand a phase to see its members. Phase groups come only from members that started, and settlement changes status without removing or reordering members.
 
-The same package contributes an `Auto research workflow` action to the Session header. It opens a right-Sidebar page with the paper upload checkpoint, user-visible stage outputs, confirmation and feedback controls, immutable idea branches, history continuation, reviewer-role selection, and the simulation/final-plan choice. The first milestone is a deterministic browser scaffold; Host PDF, search, subagent, simulation, and deliverable providers will replace its placeholder outputs.
+The same package contributes an `Auto research workflow` action to the Session header. It opens a right-Sidebar page with the paper upload checkpoint, user-visible stage outputs, confirmation and feedback controls, immutable idea branches, history continuation, reviewer-role selection, and the simulation/final-plan choice. The panel reads and writes the Session-scoped research Remote, so Host paper, search, subagent, and plan providers produce the visible artifacts; simulation remains an explicit adapter choice.
 
 ### Navigating the node
 

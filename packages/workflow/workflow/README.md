@@ -9,9 +9,9 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Run a plain-JavaScript orchestration script that fans work out to subagents and returns the script's final JSON value. Scripts can use `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()`; models normally access them through the `workflow` tool. Each run belongs to its caller, attributes every child to the invoking agent, resolves failures and cancellation without rejecting its result, and awaits script and child cleanup during disposal. The caller must supply an execution engine, allowing the isolation strategy to change without altering visible behavior.
+Run a JavaScript orchestration script that fans work out to subagents and returns its final JSON value. Scripts use `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()` through the `workflow` tool. Each run belongs to its caller, records child ownership, and waits for script and child cleanup during disposal. The caller supplies the execution engine.
 
-The Host-only `ResearchCoordinator` is the second workflow surface. It advances a paper-reading and literature-research DAG one confirmed stage at a time, delegates summarization, idea generation, refinement, and parallel reviews through injected adapters, and renders a Markdown plan from the selected branch. `createHostResearchCoordinator()` assembles the attachment, web, subagent, and Session filesystem adapters for a configured profile.
+The Host-only `ResearchCoordinator` advances a confirmed paper-reading and literature-research DAG, delegates summary, ideation, refinement, and parallel reviews, and renders a Markdown plan from the selected branch. `createHostResearchCoordinator()` assembles its attachment, Web, subagent, and Session filesystem adapters.
 
 ## Table of Contents
 
