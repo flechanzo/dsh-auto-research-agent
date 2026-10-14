@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 Run a JavaScript orchestration script that fans work out to subagents and returns its final JSON value. Scripts use `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()` through the `workflow` tool. Each run belongs to its caller, records child ownership, and waits for script and child cleanup during disposal. The caller supplies the execution engine.
 
-The Host-only `ResearchCoordinator` advances a confirmed paper-reading and literature-research DAG, delegates summary, ideation, refinement, and parallel reviews, and renders a Markdown plan from the selected branch. `createHostResearchCoordinator()` assembles its attachment, Web, subagent, and Session filesystem adapters.
+The Host-only `ResearchCoordinator` advances a confirmed paper-reading and literature-research DAG, delegates summary, ideation, refinement, and parallel reviews, performs a second targeted literature search after direction approval, and renders a Markdown plan from the selected branch. `createHostResearchCoordinator()` assembles its attachment, Web, subagent, and Session filesystem adapters.
 
 ## Table of Contents
 
@@ -60,7 +60,7 @@ A script that does not parse, a malformed meta block, an unavailable provider ro
 
 ### Human-confirmed research runs
 
-`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads a durable `FileAttachmentRef`, searches through `ctx.web`, runs named subagent roles, writes the final Markdown file through `ctx.fs`, and leaves simulation as an explicit optional adapter. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
+`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads a durable `FileAttachmentRef`, searches through `ctx.web` for the initial problem and approved direction, runs named subagent roles, writes the final Markdown file through `ctx.fs`, and leaves simulation as an explicit optional adapter. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
 
 -----
 
@@ -137,7 +137,7 @@ These limits define what the capability does not yet support. They are current c
 - **No saved or nested workflows** — the capability starts caller-supplied scripts only, and a workflow script receives no `workflow()` hook for recursive orchestration.
 - **No token-budget vocabulary** — engines cap concurrency, items, and children, but neither the request nor the result accounts for model tokens across children.
 - **Runs are holder-owned, not service-tracked** — unloading the engine does not discover independent live handles; every consumer must dispose the run it started.
-- **Research state is not a Session event yet** — the coordinator returns immutable state to its caller; a profile must provide a sidecar or RPC projection before a browser reload can resume it. The PDF reader accepts text and simple text-bearing PDFs; deployments needing scanned or compressed PDFs must replace the reader adapter.
+- **Research state uses a Session-scoped sidecar and is not a Session event yet** — the research Remote stores the DAG, historical branches, and each node's Session boundary; restoring a turn creates a new Session while retaining later nodes and branches in the sidecar. The PDF reader accepts text and simple text-bearing PDFs; deployments needing scanned or compressed PDFs must replace the reader adapter.
 
 <a id="dev-note"></a>
 ### Dev Note

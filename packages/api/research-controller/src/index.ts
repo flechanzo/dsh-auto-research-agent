@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain'
 import { createHostResearchCoordinator, type ResearchAdvanceResult } from '@deepseek-ai/dsh-workflow'
 import {
@@ -16,6 +16,8 @@ import {
   selectResearchBranch,
   selectResearchNode,
   setResearchReviewerRoles,
+  markResearchSessionBoundary,
+  researchSourceSessionId,
 } from '@deepseek-ai/dsh-workflow'
 import type {
   ResearchArtifact,
@@ -34,6 +36,7 @@ import type {
   ResearchFeedbackRequest,
   ResearchReadRequest,
   ResearchRejectRequest,
+  ResearchRestoreRequest,
   ResearchSelectBranchRequest,
   ResearchSelectNodeRequest,
   ResearchSnapshot,
@@ -62,7 +65,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 
 const researchStage = zod.enum([
   'paper-upload', 'paper-read', 'problem-summary', 'literature-search',
-  'idea-generation', 'idea-refinement', 'multi-agent-review',
+  'idea-generation', 'idea-refinement', 'targeted-literature-search', 'multi-agent-review',
   'simulation-or-final-plan', 'final-plan',
 ])
 const researchStatus = zod.enum(['pending', 'active', 'awaiting-confirmation', 'confirmed', 'rejected', 'completed'])
@@ -90,6 +93,7 @@ const researchMemory = researchMemoryInput.transform((memory): ResearchMemorySna
 const researchNodeInput = zod.object({
   nodeId: zod.string(), parentNodeId: zod.string().optional(), branchId: zod.string(),
   stage: researchStage, status: researchStatus, artifactRefs: zod.array(zod.string()),
+  sessionSeq: zod.number().int().nonnegative().optional(), sourceSessionId: zod.string().optional(),
   userDecision: zod.enum(['confirm', 'reject', 'feedback']).optional(), memorySnapshot: researchMemory,
   userNote: zod.string().optional(),
 })
@@ -100,6 +104,8 @@ const researchNode = researchNodeInput.transform((node): ResearchNode => ({
   stage: node.stage,
   status: node.status,
   artifactRefs: node.artifactRefs,
+  ...(node.sessionSeq === undefined ? {} : { sessionSeq: node.sessionSeq }),
+  ...(node.sourceSessionId === undefined ? {} : { sourceSessionId: SessionId(node.sourceSessionId) }),
   memorySnapshot: node.memorySnapshot,
   ...(node.userDecision === undefined ? {} : { userDecision: node.userDecision }),
   ...(node.userNote === undefined ? {} : { userNote: node.userNote }),
@@ -235,7 +241,7 @@ export class ResearchController extends TypertRemoteService {
   feedback(request: ResearchFeedbackRequest): Promise<ResearchCommandValue> {
     return this.serialize(async () => {
       const current = await this.current(request.sessionId, request.expectedRevision)
-      this.requireActiveTail(current.state)
+      this.requireActiveTail(current.state, request.sessionId)
       const state = addResearchFeedback(current.state, request.feedback)
       return this.commit(request.sessionId, current.revision, state)
     })
@@ -293,6 +299,35 @@ export class ResearchController extends TypertRemoteService {
     })
   }
 
+  /** Restore a historical stage by forking the Session at its recorded boundary. */
+  @Remote('restore')
+  restore(request: ResearchRestoreRequest): Promise<ResearchCommandValue> {
+    return this.serialize(async () => {
+      const current = await this.current(request.sessionId, request.expectedRevision)
+      const source = current.state.nodes[request.nodeId]
+      if (source === undefined) {
+        throw new RemoteError('gateway/bad-request', `research node "${request.nodeId}" does not exist`, {})
+      }
+      const branchState = continueFromResearchNode(current.state, request.nodeId)
+      if (source.sessionSeq === undefined) {
+        return this.commit(request.sessionId, current.revision, branchState)
+      }
+      const sourceSessionId = researchSourceSessionId(source, request.sessionId)
+      const fork = await this.ctx.sessionController.fork({
+        sessionId: sourceSessionId,
+        atSeq: source.sessionSeq,
+      })
+      const forkedState = markResearchSessionBoundary(branchState, source.sessionSeq, fork.sessionId)
+      const childRevision = 1
+      await (await this.ready).table('sessions').put(fork.sessionId, {
+        revision: childRevision, state: forkedState, updatedAt: Date.now(),
+      })
+      return {
+        snapshot: { sessionId: fork.sessionId, revision: childRevision, state: forkedState },
+      }
+    })
+  }
+
   private async advance(
     sessionId: SessionId,
     expectedRevision: number,
@@ -304,7 +339,7 @@ export class ResearchController extends TypertRemoteService {
     },
   ): Promise<ResearchCommandValue> {
     const current = await this.current(sessionId, expectedRevision)
-    this.requireActiveTail(current.state)
+    this.requireActiveTail(current.state, sessionId)
     const prepared = prepare(current.state)
     const agent = await this.agent(sessionId)
     const coordinator = createHostResearchCoordinator({
@@ -325,7 +360,11 @@ export class ResearchController extends TypertRemoteService {
       ...(prepared.finalChoice === undefined ? {} : { finalChoice: prepared.finalChoice }),
       signal,
     })
-    return this.commit(sessionId, current.revision, result.state, result)
+    const lastEventSeq = Number(agent.session.seq) - 1
+    const state = lastEventSeq < 0
+      ? result.state
+      : markResearchSessionBoundary(result.state, lastEventSeq, sessionId)
+    return this.commit(sessionId, current.revision, state, { ...result, state })
   }
 
   private async agent(sessionId: SessionId): Promise<Agent> {
@@ -344,7 +383,14 @@ export class ResearchController extends TypertRemoteService {
     return snapshot
   }
 
-  private requireActiveTail(state: ResearchState): void {
+  private requireActiveTail(state: ResearchState, sessionId: SessionId): void {
+    const selected = state.nodes[state.selectedNodeId]
+    if (selected?.sourceSessionId !== undefined && selected.sourceSessionId !== sessionId) {
+      throw new RemoteError('research/history', 'Restore this node into its source Session before changing it.', {
+        nodeId: state.selectedNodeId,
+        branchId: state.activeBranchId,
+      })
+    }
     const branch = state.branches[state.activeBranchId]
     if (branch?.nodeIds.at(-1) !== state.selectedNodeId) {
       throw new RemoteError('research/history', 'Continue from the selected historical node before changing it.', {

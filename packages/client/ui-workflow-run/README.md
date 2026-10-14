@@ -27,7 +27,7 @@ Use `dsh-client-ui-workflow-run` to inspect each durable top-level workflow run 
 
 A top-level workflow run through `dsh-tool-workflow` appears in the conversation as its own node: expand the run to see its phases, and expand a phase to see its members. Phase groups come only from members that started, and settlement changes status without removing or reordering members.
 
-The same package contributes an `Auto research workflow` action to the Session header. It opens a right-Sidebar page with the paper upload checkpoint, user-visible stage outputs, confirmation and feedback controls, immutable idea branches, history continuation, reviewer-role selection, and the simulation/final-plan choice. The panel reads and writes the Session-scoped research Remote, so Host paper, search, subagent, and plan providers produce the visible artifacts; simulation remains an explicit adapter choice.
+The same package contributes an `Auto research workflow` action to the Session header. It opens a right-Sidebar page with the paper upload checkpoint, user-visible stage outputs, confirmation and feedback controls, immutable idea branches, history selection, restoration of a selected turn into a new Session, reviewer-role selection, and the simulation/final-plan choice. After the research direction is confirmed, the panel shows the second targeted literature stage; the final plan displays its Markdown and the path of the written file. The panel reads and writes the Session-scoped research Remote, so Host paper, search, subagent, and plan providers produce the visible artifacts; simulation remains an explicit adapter choice.
 
 ### Navigating the node
 
@@ -90,7 +90,7 @@ These limits define which runs produce records and what the node exposes; they a
 - **Only top-level calls through `dsh-tool-workflow` produce these records** — nested PTC mode calls and direct `WorkflowEngine` consumers do not.
 - **Navigation is intentionally live-only** — terminal members remain visible for review but never expose a cold-session opener from this node.
 - **The node shows run, phase, member identity, and status only** — scripts, outputs, errors, logs, usage, static topology, and controls remain outside this surface.
-- **The research page is a scaffold** — its browser state is not yet backed by Session events or Host providers; that wiring is the next milestone.
+- **The research page still defers concrete capabilities** — a simple simulation adapter, scanned-PDF/OCR extraction, deliverable presentation, and complete Host–Client Remote end-to-end coverage remain future work.
 
 <a id="dev-note"></a>
 ### Dev Note

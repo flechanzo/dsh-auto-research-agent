@@ -129,6 +129,15 @@
   line-height: 1.4;
 }
 
+.successNotice {
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-state-success-primary);
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-state-success-primary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .button,
 .primaryButton,
 .dangerButton {

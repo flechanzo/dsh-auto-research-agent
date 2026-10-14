@@ -9,6 +9,8 @@
  * @module @deepseek-ai/dsh-workflow/research
  */
 
+import type { SessionId } from '@deepseek-ai/dsh-session'
+
 /** Stages shown by the research workflow navigator. */
 export type ResearchStage =
   | 'paper-upload'
@@ -17,6 +19,7 @@ export type ResearchStage =
   | 'literature-search'
   | 'idea-generation'
   | 'idea-refinement'
+  | 'targeted-literature-search'
   | 'multi-agent-review'
   | 'simulation-or-final-plan'
   | 'final-plan'
@@ -73,6 +76,10 @@ export interface ResearchNode {
   readonly status: ResearchNodeStatus
   /** Artifacts produced by this stage. */
   readonly artifactRefs: readonly string[]
+  /** Inclusive Session event boundary used to restore this stage in a fork. */
+  readonly sessionSeq?: number
+  /** Session whose event log contains the boundary, including copied history nodes. */
+  readonly sourceSessionId?: SessionId
   /** Last human decision, if any. */
   readonly userDecision?: ResearchDecision
   /** Exact memory snapshot used by downstream agents. */
@@ -275,6 +282,46 @@ export function completeResearchNode(state: ResearchState): ResearchState {
 }
 
 /**
+ * Attach the durable Session boundary reached after a stage operation.
+ * @param state - Current research state.
+ * @param sessionSeq - Inclusive event sequence reached by the operation.
+ * @param sourceSessionId - Session containing the event, when known.
+ * @returns The state with the selected node's restore metadata updated.
+ */
+export function markResearchSessionBoundary(
+  state: ResearchState,
+  sessionSeq: number,
+  sourceSessionId?: SessionId,
+): ResearchState {
+  if (!Number.isSafeInteger(sessionSeq) || sessionSeq < 0) throw new Error('research Session boundary must be a non-negative safe integer')
+  const node = selectedResearchNode(state)
+  return {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [node.nodeId]: {
+        ...node,
+        sessionSeq,
+        ...(sourceSessionId === undefined ? {} : { sourceSessionId }),
+      },
+    },
+  }
+}
+
+/**
+ * Resolve the Session that owns a node's restore boundary.
+ * @param node - Node metadata from the durable DAG.
+ * @param currentSessionId - Session carrying legacy nodes without a recorded source Session.
+ * @returns The source Session for the node's event boundary.
+ */
+export function researchSourceSessionId(
+  node: Pick<ResearchNode, 'sourceSessionId'>,
+  currentSessionId: SessionId,
+): SessionId {
+  return node.sourceSessionId ?? currentSessionId
+}
+
+/**
  * Reject an idea and start a fresh idea-generation branch from the problem
  * summary. The rejected branch remains readable and immutable.
  * @param state - Current research state.
@@ -329,6 +376,8 @@ export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
 }
 
 /** Continue from a historical node by creating an isolated branch.
+ * The copied node keeps its restore metadata; a Host Session fork rebinds the
+ * continuation's source Session after the new Session id is allocated.
  * @param state - Current research state.
  * @param nodeId - Historical node to fork from.
  * @returns The state with a new active continuation branch.
@@ -345,6 +394,8 @@ export function continueFromResearchNode(state: ResearchState, nodeId: string): 
     stage: source.stage,
     status: source.status,
     artifactRefs: source.artifactRefs,
+    ...(source.sessionSeq === undefined ? {} : { sessionSeq: source.sessionSeq }),
+    ...(source.sourceSessionId === undefined ? {} : { sourceSessionId: source.sourceSessionId }),
     memorySnapshot: source.memorySnapshot,
     ...(source.userDecision === undefined ? {} : { userDecision: source.userDecision }),
     ...(source.userNote === undefined ? {} : { userNote: source.userNote }),

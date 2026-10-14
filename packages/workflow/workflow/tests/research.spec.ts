@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   addResearchFeedback,
   appendResearchOutput,
@@ -6,6 +7,8 @@ import {
   confirmResearchNode,
   continueFromResearchNode,
   createResearchState,
+  markResearchSessionBoundary,
+  researchSourceSessionId,
   rejectIdea,
   selectResearchNode,
 } from '../src/research.ts'
@@ -95,4 +98,40 @@ describe('research workflow state', () => {
     expect(selected.selectedNodeId).toBe('node-1')
     expect(selected.activeBranchId).toBe(state.activeBranchId)
   })
+
+  it('copies a recorded Session boundary into a continuation branch', () => {
+    let state = appendResearchOutput(createResearchState(), {
+      stage: 'problem-summary', kind: 'problem', title: '问题', content: '问题内容',
+    })
+    state = markResearchSessionBoundary(state, 12, SessionId('source-session'))
+    const source = state.selectedNodeId
+    const continued = continueFromResearchNode(state, source)
+    expect(state.nodes[source]?.sessionSeq).toBe(12)
+    expect(state.nodes[source]?.sourceSessionId).toBe(SessionId('source-session'))
+    expect(continued.nodes[continued.selectedNodeId]?.sessionSeq).toBe(12)
+    expect(continued.nodes[continued.selectedNodeId]?.sourceSessionId).toBe(SessionId('source-session'))
+    expect(() => markResearchSessionBoundary(state, -1)).toThrow('Session boundary')
+  })
+
+  it('keeps a copied future node bound to its source Session', () => {
+    const sourceSessionId = SessionId('source-session')
+    const childSessionId = SessionId('restored-session')
+    let state = appendResearchOutput(createResearchState(), {
+      stage: 'problem-summary', kind: 'problem', title: '问题', content: '问题内容',
+    })
+    state = markResearchSessionBoundary(state, 7, sourceSessionId)
+    state = appendResearchOutput(state, {
+      stage: 'idea-generation', kind: 'idea', title: '未来方案', content: '创新点：方案',
+    })
+    state = markResearchSessionBoundary(state, 13, sourceSessionId)
+    const futureNode = state.nodes[state.selectedNodeId]
+    if (futureNode === undefined) throw new Error('future research node is missing')
+    const childState = continueFromResearchNode(state, futureNode.nodeId)
+    const copiedNode = childState.nodes[childState.selectedNodeId]
+    if (copiedNode === undefined) throw new Error('copied research node is missing')
+    expect(copiedNode.sourceSessionId).toBe(sourceSessionId)
+    expect(researchSourceSessionId(copiedNode, childSessionId)).toBe(sourceSessionId)
+    expect(researchSourceSessionId({}, childSessionId)).toBe(childSessionId)
+  })
+
 })

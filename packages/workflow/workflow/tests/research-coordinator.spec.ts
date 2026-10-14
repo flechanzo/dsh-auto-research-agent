@@ -12,7 +12,7 @@ import {
 
 const parent = {} as Agent
 
-function adapters(): ResearchCoordinatorAdapters {
+function adapters(searchQueries: string[] = [], planWriter: ResearchCoordinatorAdapters['planWriter'] = undefined): ResearchCoordinatorAdapters {
   return {
     papers: {
       async read(paper) {
@@ -20,7 +20,8 @@ function adapters(): ResearchCoordinatorAdapters {
       },
     },
     literature: {
-      async search() {
+      async search(query) {
+        searchQueries.push(query)
         return [{ url: 'https://example.test/paper', title: 'Related paper', snippet: 'A useful baseline.' }]
       },
     },
@@ -35,6 +36,7 @@ function adapters(): ResearchCoordinatorAdapters {
         }
       },
     },
+    ...(planWriter === undefined ? {} : { planWriter }),
   }
 }
 
@@ -44,7 +46,14 @@ function confirm(state: Parameters<typeof confirmResearchNode>[0]) {
 
 describe('ResearchCoordinator', () => {
   it('executes every confirmed stage and renders a final plan', async () => {
-    const coordinator = new ResearchCoordinator(adapters())
+    const searchQueries: string[] = []
+    const written: string[] = []
+    const coordinator = new ResearchCoordinator(adapters(searchQueries, {
+      async write(file) {
+        written.push(file.content)
+        return { fileName: 'workspace/research-plan.md', content: file.content }
+      },
+    }))
     const paper = { attachmentId: AttachmentId('sha256:paper'), name: 'paper.txt', bytes: 48 } as const
     let state = createResearchState()
 
@@ -59,16 +68,25 @@ describe('ResearchCoordinator', () => {
     state = (await coordinator.advance({ state, parent })).state
     expect(state.artifacts[state.nodes[state.selectedNodeId]?.artifactRefs[0] ?? '']?.content).toContain('创新点')
     state = confirm(state)
-    state = (await coordinator.advance({ state, parent, reviewerRoles: ['method', 'novelty', 'reproducibility'] })).state
+    state = (await coordinator.advance({ state, parent })).state
+    expect(state.nodes[state.selectedNodeId]?.stage).toBe('idea-refinement')
     state = confirm(state)
     state = (await coordinator.advance({ state, parent })).state
+    expect(state.nodes[state.selectedNodeId]?.stage).toBe('targeted-literature-search')
+    state = confirm(state)
+    state = (await coordinator.advance({ state, parent, reviewerRoles: ['method', 'novelty', 'reproducibility'] })).state
+    expect(searchQueries).toHaveLength(2)
+    expect(searchQueries[1]).toContain('Confirmed direction:')
+    expect(searchQueries[1]).toContain('可校准的不确定性门控检索')
     state = confirm(state)
     state = (await coordinator.advance({ state, parent })).state
     expect(state.nodes[state.selectedNodeId]?.stage).toBe('simulation-or-final-plan')
     state = confirm(state)
     const final = await coordinator.advance({ state, parent, finalChoice: 'plan' })
-    expect(final.planFile?.fileName).toBe('research-plan.md')
+    expect(final.planFile?.fileName).toBe('workspace/research-plan.md')
     expect(final.planFile?.content).toContain('# 自动科研方案')
+    expect(written).toHaveLength(1)
+    expect(written[0]).toBe(final.planFile?.content)
     expect(final.state.nodes[final.state.selectedNodeId]?.stage).toBe('final-plan')
   })
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode 
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { IconBranchOutlineRegular, IconCheckOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
-  ResearchArtifact, ResearchCommandValue, ResearchNode, ResearchRemote, ResearchStage, ResearchState,
+  ResearchArtifact, ResearchCommandValue, ResearchNode, ResearchRemote, ResearchSnapshot, ResearchStage, ResearchState,
 } from '@deepseek-ai/dsh-api-research-controller/client'
 import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -18,6 +18,8 @@ export interface ResearchPanelInjected {
   readonly research: ResearchRemote
   /** Browser file upload service that returns an attachment reference. */
   readonly fileUpload: FileUploadService
+  /** Open a forked Session when the user restores a historical stage. */
+  readonly openSession: (sessionId: ResearchSnapshot['sessionId']) => void
 }
 
 const REVIEWER_ROLES = [
@@ -33,6 +35,7 @@ const STAGE_KEYS = {
   'literature-search': 'research.literature-search',
   'idea-generation': 'research.idea-generation',
   'idea-refinement': 'research.idea-refinement',
+  'targeted-literature-search': 'research.targeted-literature-search',
   'multi-agent-review': 'research.multi-agent-review',
   'simulation-or-final-plan': 'research.simulation-or-final-plan',
   'final-plan': 'research.final-plan',
@@ -89,7 +92,7 @@ function failureText(failure: { readonly message: string; readonly code: string 
 }
 
 /** Render the staged research workflow, its branches, artifacts, and checkpoints. */
-export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }: ResearchPanelProps): ReactNode {
+export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, openSession, t }: ResearchPanelProps): ReactNode {
   const { tab } = useTabInfo()
   const [state, setState] = useState<ResearchState>()
   const [revision, setRevision] = useState(0)
@@ -108,6 +111,10 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     [branch, displayState.nodes],
   )
   const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
+  const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== sessionId
+  const canMutate = !isHistorical && !sessionMismatch
+  const canContinue = !sessionMismatch && isHistorical && selected.stage !== 'paper-upload' && selected.stage !== 'final-plan'
+  const canRestore = selected.sessionSeq !== undefined && (isHistorical || sessionMismatch)
   const artifact = latestArtifact(displayState, selected)
   const ideaNeedsReview = selected.stage === 'idea-generation' || selected.stage === 'idea-refinement'
 
@@ -116,6 +123,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     const load = async (): Promise<void> => {
       setLoading(true)
       setError(undefined)
+      setState(undefined)
+      setRevision(0)
       try {
         const result = await research.read({ sessionId })
         if (disposed) return
@@ -136,25 +145,32 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   }, [research, sessionId, t])
 
   useEffect(() => {
-    if (selected.memorySnapshot.reviewerRoles.length > 0) setReviewers(selected.memorySnapshot.reviewerRoles)
+    setReviewers(selected.memorySnapshot.reviewerRoles.length > 0
+      ? selected.memorySnapshot.reviewerRoles
+      : REVIEWER_ROLES.map(item => item.role))
   }, [selected.nodeId, selected.memorySnapshot.reviewerRoles])
 
-  const execute = async (operation: () => Promise<RemoteResult<ResearchCommandValue>>): Promise<boolean> => {
-    if (busy) return false
+  const execute = async (operation: () => Promise<RemoteResult<ResearchCommandValue>>): Promise<ResearchCommandValue | undefined> => {
+    if (busy) return undefined
     setBusy(true)
     setError(undefined)
     try {
       const result = await operation()
       if (!result.ok) {
         setError(failureText(result.error, t))
-        return false
+        return undefined
       }
-      setRevision(result.value.snapshot.revision)
-      setState(result.value.snapshot.state)
-      return true
+      // A restore forks the Session and returns the child snapshot before the
+      // workspace navigation completes. Keep the source panel unchanged until
+      // its sessionId changes so edits cannot target the wrong Session.
+      if (result.value.snapshot.sessionId === sessionId) {
+        setRevision(result.value.snapshot.revision)
+        setState(result.value.snapshot.state)
+      }
+      return result.value
     } catch {
       setError(t('research.error.request'))
-      return false
+      return undefined
     } finally {
       setBusy(false)
     }
@@ -174,7 +190,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const confirm = (): void => {
     void execute(() => research.confirm({
       sessionId, expectedRevision: revision,
-      reviewerRoles: reviewers,
+      ...(selected.stage === 'targeted-literature-search' ? { reviewerRoles: reviewers } : {}),
       ...(selected.stage === 'simulation-or-final-plan' ? { finalChoice: choice } : {}),
     }, tab.signal))
   }
@@ -182,7 +198,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const submitFeedback = (): void => {
     if (feedback.trim() === '') return
     void execute(() => research.feedback({ sessionId, expectedRevision: revision, feedback })).then((success) => {
-      if (success) setFeedback('')
+      if (success !== undefined) setFeedback('')
     })
   }
 
@@ -203,6 +219,14 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
 
   const continueFromNode = (nodeId: string): void => {
     void execute(() => research.continueFromNode({ sessionId, expectedRevision: revision, nodeId }))
+  }
+
+  const restoreNode = (): void => {
+    if (selected.sessionSeq === undefined) return
+    void execute(() => research.restore({ sessionId, expectedRevision: revision, nodeId: selected.nodeId }))
+      .then((result) => {
+        if (result !== undefined && result.snapshot.sessionId !== sessionId) openSession(result.snapshot.sessionId)
+      })
   }
 
   return (
@@ -250,6 +274,9 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       <div className={css.card}>
         <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
         <pre className={css.content}>{artifact?.content || t('research.emptyArtifact')}</pre>
+        {artifact?.kind === 'plan' && artifact.source !== undefined && (
+          <div className={css.successNotice}>{t('research.planWritten', { path: artifact.source })}</div>
+        )}
         {error !== undefined && <div className={css.notice} role="alert">{error}</div>}
         {selected.stage === 'paper-upload' && (
           <>
@@ -260,13 +287,13 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             <span className={css.subtle}>{t('research.uploadHint')}</span>
           </>
         )}
-        {!isHistorical && ((selected.status === 'awaiting-confirmation' || selected.status === 'confirmed')
+        {canMutate && ((selected.status === 'awaiting-confirmation' || selected.status === 'confirmed')
           || (selected.status === 'active' && selected.stage !== 'paper-upload')) && (
           <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={confirm}>
             <IconCheckOutlineRegular size={14} /> {t('research.confirm')}
           </button>
         )}
-        {!isHistorical && ideaNeedsReview && (
+        {canMutate && ideaNeedsReview && (
           <>
             <div className={css.subtle}>{t('research.innovation')}</div>
             <textarea className={css.feedback} value={feedback} placeholder={t('research.feedbackPlaceholder')} onChange={(event) => { setFeedback(event.target.value) }} />
@@ -279,7 +306,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             )}
           </>
         )}
-        {!isHistorical && selected.stage === 'multi-agent-review' && (
+        {canMutate && selected.stage === 'targeted-literature-search' && (
           <>
             <div className={css.subtle}>{t('research.roles')}</div>
             <div className={css.reviewerRow}>
@@ -290,14 +317,21 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             </div>
           </>
         )}
-        {!isHistorical && selected.stage === 'simulation-or-final-plan' && (
+        {canMutate && selected.stage === 'simulation-or-final-plan' && (
           <div className={css.choiceRow}>
             <button type="button" disabled={busy || loading} className={choice === 'simulation' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => { setChoice('simulation') }}><IconPlayOutlineRegular size={13} /> {t('research.simulate')}</button>
             <button type="button" disabled={busy || loading} className={choice === 'plan' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => { setChoice('plan') }}>{t('research.plan')}</button>
           </div>
         )}
-        {selected.nodeId !== branch?.nodeIds[branch.nodeIds.length - 1] && (
-          <button type="button" disabled={busy || loading} className={css.button} onClick={() => { continueFromNode(selected.nodeId) }}>{t('research.continue')}</button>
+        {(canContinue || canRestore) && (
+          <div className={css.actionRow}>
+            {canRestore && (
+              <button type="button" disabled={busy || loading} className={css.primaryButton} onClick={restoreNode}>{t('research.restore')}</button>
+            )}
+            {canContinue && (
+              <button type="button" disabled={busy || loading} className={css.button} onClick={() => { continueFromNode(selected.nodeId) }}>{t('research.continue')}</button>
+            )}
+          </div>
         )}
       </div>
     </div>

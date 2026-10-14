@@ -210,7 +210,10 @@ export class ResearchCoordinator {
         return node.artifactRefs.length === 0 ? this.generateIdea(request) : this.refineIdea(request)
       case 'idea-refinement':
         this.requireConfirmed(node.stage, node.status)
-        return node.userDecision === 'feedback' ? this.refineIdea(request) : this.reviewIdea(request)
+        return node.userDecision === 'feedback' ? this.refineIdea(request) : this.searchTargetedLiterature(request)
+      case 'targeted-literature-search':
+        this.requireConfirmed(node.stage, node.status)
+        return this.reviewIdea(request)
       case 'multi-agent-review':
         this.requireConfirmed(node.stage, node.status)
         return this.createFinalChoice(request)
@@ -332,6 +335,26 @@ export class ResearchCoordinator {
       stage: 'multi-agent-review', kind: 'review', title: '多智能体协同审查', content: reviews.join('\n\n'),
     }, Date.now())
     return this.withLatestArtifact(stateWithReview)
+  }
+
+  private async searchTargetedLiterature(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
+    const problem = this.latestArtifact(request.state, 'problem')
+    const idea = this.latestArtifact(request.state, 'idea')
+    const sources = await this.adapters.literature.search(
+      `Find recent and directly comparable research for this confirmed direction. Prioritize methods, baselines, and evidence that can challenge the proposed innovation.\n\nResearch problem:\n${problem.content}\n\nConfirmed direction:\n${idea.content}`,
+      request.signal,
+    )
+    const content = sources.length === 0
+      ? '确认研究方向后的针对性检索没有找到可引用的相关论文；请回到改进想法阶段调整方向。'
+      : sources.map((source, index) => {
+        const title = source.title ?? source.url
+        const detail = source.snippet === undefined ? '' : `\n${source.snippet}`
+        return `${index + 1}. [${title}](${source.url})${detail}`
+      }).join('\n\n')
+    const state = appendResearchOutput(request.state, {
+      stage: 'targeted-literature-search', kind: 'literature', title: '确认方向后的针对性文献调研', content,
+    }, Date.now())
+    return this.withLatestArtifact(state)
   }
 
   private async chooseSimulationOrPlan(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
@@ -542,11 +565,15 @@ export function renderResearchPlan(artifacts: readonly ResearchArtifact[]): stri
     const artifact = [...artifacts].reverse().find(item => item.kind === kind)
     return artifact === undefined ? `## ${heading}\n\n待补充。` : `## ${heading}\n\n${artifact.content}`
   }
+  const literature = artifacts.filter(item => item.kind === 'literature')
+  const literatureSection = literature.length === 0
+    ? '## 相关工作与证据\n\n待补充。'
+    : `## 相关工作与证据\n\n${literature.map(item => `### ${item.title}\n\n${item.content}`).join('\n\n')}`
   return [
     '# 自动科研方案',
     section('summary', '论文摘要'),
     section('problem', '研究问题与缺口'),
-    section('literature', '相关工作与证据'),
+    literatureSection,
     section('idea', '改进方法与创新点'),
     section('review', '多智能体审查与修订'),
     section('simulation', '简单仿真证据'),

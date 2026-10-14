@@ -24,9 +24,11 @@ kind: "package-reference"
 
 Host 控制器要求附件、Session 文件系统、Session controller、storage-domain、subagent、Typert 和 Web 服务。它打开一个 `research` domain，并为每个 Session 保存一行记录，因此浏览器刷新后可以恢复完整的不可变 DAG，而不必为每个 Session 打开一个数据库 domain。只有必须推进协调器的命令才会解析 Session Agent；读取操作不会恢复 Agent。
 
-Client 用 `research.read({ sessionId })` 读取当前 revision。`research.upload` 保存上传的 `FileAttachmentRef`，读取论文并返回待确认的摘要 artifact；下一次 `research.confirm` 才会运行问题提炼。之后每次确认推进一个阶段，`research.feedback` 保存人工反馈，`research.reject` 创建隔离的想法分支。`research.selectBranch` 和 `research.selectNode` 更改显示选择；`research.continueFromNode` 从历史节点创建新分支。每个改变状态的请求都携带 `expectedRevision`；过期值会以 `research/stale` 失败，调用方必须读取返回状态后再重试。
+Client 用 `research.read({ sessionId })` 读取当前 revision。`research.upload` 保存上传的 `FileAttachmentRef`，读取论文并返回待确认的摘要 artifact；下一次 `research.confirm` 才会运行问题提炼。之后每次确认推进一个阶段；确认改进方向后会先执行一次针对性文献调研，再进入多智能体审查。`research.feedback` 保存人工反馈，`research.reject` 创建隔离的想法分支。`research.selectBranch` 和 `research.selectNode` 更改显示选择；`research.continueFromNode` 从历史节点创建新分支，`research.restore` 则按该节点记录的 Session 事件边界创建新 Session 分支并恢复其对话记忆。每个改变状态的请求都携带 `expectedRevision`；过期值会以 `research/stale` 失败，调用方必须读取返回状态后再重试。
 
-控制器把提供方工作交给 `createHostResearchCoordinator()`。协调器读取附件，通过 `ctx.web` 检索文献，委派摘要、想法生成、完善以及并行审查给配置的 subagent provider，并通过 `ctx.fs` 写入选定的最终方案。仿真仍是显式的协调器适配器，在仿真或方案检查点通过 `research.confirm` 选择。
+控制器把提供方工作交给 `createHostResearchCoordinator()`。协调器读取附件，通过 `ctx.web` 检索初始文献和确认方向后的针对性文献，委派摘要、想法生成、完善以及并行审查给配置的 subagent provider，并通过 `ctx.fs` 写入选定的最终方案。最终 artifact 同时保留 Markdown 内容和写入后的路径。仿真仍是显式的协调器适配器，在仿真或方案检查点通过 `research.confirm` 选择。
+
+新节点记录产生其事件边界的源 Session；恢复后保留的后续节点仍可从源 Session 恢复。恢复会截取源 Session 的对话前缀，但复制完整的科研 sidecar，因此可以切换查看所有后续分支；要修改源 Session 中的后续节点，先再次恢复该节点，控制器会拒绝在错误 Session 上确认、反馈或拒绝。旧 sidecar 没有源 Session 标记时，恢复操作兼容地使用当前 Session。
 
 ### 配置
 

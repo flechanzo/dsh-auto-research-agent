@@ -39,7 +39,11 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => sidebarTabs.register(researchDefinition(t)), 'ui-workflow-run: research tab type')
     ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab', key: RESEARCH_ID, locale: NS,
-      inject: (): ResearchPanelInjected => ({ research: ctx.remote.research, fileUpload: ctx.fileUpload }),
+      inject: (): ResearchPanelInjected => ({
+        research: ctx.remote.research,
+        fileUpload: ctx.fileUpload,
+        openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
+      }),
     }, ResearchPanel))
     ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab.title', key: RESEARCH_ID, locale: NS,

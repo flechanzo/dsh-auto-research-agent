@@ -35,6 +35,8 @@ export {
   confirmResearchNode,
   continueFromResearchNode,
   createResearchState,
+  markResearchSessionBoundary,
+  researchSourceSessionId,
   rejectIdea,
   selectResearchNode,
   selectResearchBranch,

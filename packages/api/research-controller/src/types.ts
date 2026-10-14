@@ -8,7 +8,7 @@ export type { SessionId } from '@deepseek-ai/dsh-session/types'
 /** Stages exposed by the research workflow. */
 export type ResearchStage =
   | 'paper-upload' | 'paper-read' | 'problem-summary' | 'literature-search'
-  | 'idea-generation' | 'idea-refinement' | 'multi-agent-review'
+  | 'idea-generation' | 'idea-refinement' | 'targeted-literature-search' | 'multi-agent-review'
   | 'simulation-or-final-plan' | 'final-plan'
 
 /** Lifecycle status of one research stage node. */
@@ -55,6 +55,10 @@ export interface ResearchNode {
   readonly status: ResearchNodeStatus
   /** Artifact references produced by this node. */
   readonly artifactRefs: readonly string[]
+  /** Inclusive Session event boundary used to restore this stage in a fork. */
+  readonly sessionSeq?: number
+  /** Session whose event log contains the boundary, including copied history nodes. */
+  readonly sourceSessionId?: SessionId
   /** Last human decision. */
   readonly userDecision?: 'confirm' | 'reject' | 'feedback'
   /** Memory snapshot used by downstream agents. */
@@ -175,6 +179,13 @@ export interface ResearchSelectNodeRequest {
 
 /** Continue from a historical node in a new isolated branch. */
 export interface ResearchContinueRequest {
+  readonly sessionId: SessionId
+  readonly expectedRevision: number
+  readonly nodeId: string
+}
+
+/** Restore a historical research node in an isolated Session branch. */
+export interface ResearchRestoreRequest {
   readonly sessionId: SessionId
   readonly expectedRevision: number
   readonly nodeId: string
