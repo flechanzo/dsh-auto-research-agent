@@ -179,6 +179,30 @@ describe('createAttachmentPaperReader', () => {
     expect(pages[0]?.byteLength).toBeGreaterThan(0)
   })
 
+  it('OCRs sparse pages in a mixed PDF while retaining embedded page text order', async () => {
+    const bytes = testPdfPages([
+      'Selectable page with enough text to stay on the embedded text path.',
+      '',
+    ])
+    const pages: number[] = []
+    const reader = createAttachmentPaperReader(attachmentReader(bytes), bytes.byteLength, {
+      ocr: {
+        async recognize(input) {
+          pages.push(...input.pages.map(page => page.pageNumber))
+          return 'Page 2\nOCR recovered page content'
+        },
+      },
+    })
+    const document = await reader.read(
+      { attachmentId: AttachmentId('sha256:mixed'), name: 'mixed.pdf', bytes: bytes.byteLength },
+      undefined,
+      { parent },
+    )
+    expect(document.extractionMethod).toBe('ocr')
+    expect(pages).toEqual([2])
+    expect(document.text.indexOf('Selectable page')).toBeLessThan(document.text.indexOf('OCR recovered page'))
+  })
+
   it('reports a clear error when a scanned PDF has no OCR adapter', async () => {
     const bytes = testPdf()
     const reader = createAttachmentPaperReader(attachmentReader(bytes), bytes.byteLength)
@@ -194,12 +218,26 @@ function attachmentReader(bytes: Uint8Array): AttachmentStore {
 }
 
 function testPdf(text = ''): Uint8Array {
-  const stream = text.length === 0 ? '0 0 0 rg 10 10 100 80 re f' : `BT /F1 8 Tf 10 50 Td (${text}) Tj ET`
+  return testPdfPages([text])
+}
+
+function testPdfPages(texts: readonly string[]): Uint8Array {
+  const pageObjects: string[] = []
+  const contentObjects: string[] = []
+  const pageRefs: string[] = []
+  const firstPageObject = 3
+  const firstContentObject = firstPageObject + texts.length
+  texts.forEach((text, index) => {
+    pageRefs.push(`${firstPageObject + index} 0 R`)
+    const stream = text.length === 0 ? '0 0 0 rg 10 10 100 80 re f' : `BT /F1 8 Tf 10 50 Td (${text}) Tj ET`
+    pageObjects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 100] /Resources << /Font << /F1 ${firstContentObject + texts.length} 0 R >> >> /Contents ${firstContentObject + index} 0 R >>`)
+    contentObjects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
+  })
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    `<< /Type /Pages /Kids [${pageRefs.join(' ')}] /Count ${texts.length} >>`,
+    ...pageObjects,
+    ...contentObjects,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
   ]
   let pdf = '%PDF-1.7\n'

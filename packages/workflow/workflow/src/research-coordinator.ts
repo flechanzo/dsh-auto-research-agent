@@ -511,7 +511,7 @@ export function createAttachmentPaperReader(
       }
 
       const pdf = await openPdf(bytes, paper.name, resolved, signal)
-      if (pdf.text.trim().length > 0) {
+      if (pdf.pages.length === 0) {
         return {
           fileName: paper.name,
           text: pdf.text,
@@ -531,10 +531,11 @@ export function createAttachmentPaperReader(
         context.parent,
         signal,
       )
-      if (text.trim().length === 0) throw new Error(`PDF_OCR_EMPTY: OCR produced no readable text for "${paper.name}"`)
+      const mergedText = mergePdfText(pdf.embeddedPages, text)
+      if (mergedText.trim().length === 0) throw new Error(`PDF_OCR_EMPTY: OCR produced no readable text for "${paper.name}"`)
       return {
         fileName: paper.name,
-        text,
+        text: mergedText,
         byteLength,
         extractionMethod: 'ocr',
         pageCount: pdf.pageCount,
@@ -752,8 +753,14 @@ export function renderResearchPlan(artifacts: readonly ResearchArtifact[]): stri
 
 interface PdfExtraction {
   readonly text: string
+  readonly embeddedPages: readonly PdfTextPage[]
   readonly pageCount: number
   readonly pages: readonly ResearchPaperOcrPage[]
+}
+
+interface PdfTextPage {
+  readonly pageNumber: number
+  readonly text: string
 }
 
 interface ResolvedPaperReaderOptions {
@@ -803,7 +810,7 @@ async function openPdf(
     document = await loadingTask.promise
     const pageCount = document.numPages
     const pagesToRead = Math.min(pageCount, options.maxPdfPages)
-    const textPages: string[] = []
+    const embeddedPages: PdfTextPage[] = []
     for (let pageNumber = 1; pageNumber <= pagesToRead; pageNumber += 1) {
       signal?.throwIfAborted()
       const page = await document.getPage(pageNumber)
@@ -812,13 +819,12 @@ async function openPdf(
         .map(item => 'str' in item ? item.str : '')
         .filter(text => text.trim().length > 0)
         .join(' ')
-      if (pageText.trim().length > 0) textPages.push(`Page ${pageNumber}\n${pageText}`)
+      if (pageText.trim().length >= MIN_EMBEDDED_TEXT) embeddedPages.push({ pageNumber, text: pageText.trim() })
     }
-    const text = textPages.join('\n\n').trim()
-    if (text.length >= MIN_EMBEDDED_TEXT) return { text, pageCount, pages: [] }
 
     const pages: ResearchPaperOcrPage[] = []
     for (let pageNumber = 1; pageNumber <= pagesToRead; pageNumber += 1) {
+      if (embeddedPages.some(page => page.pageNumber === pageNumber)) continue
       signal?.throwIfAborted()
       const page = await document.getPage(pageNumber)
       const initialViewport = page.getViewport({ scale: options.ocrScale })
@@ -836,7 +842,7 @@ async function openPdf(
       await page.render({ canvas: null, canvasContext: context as never, viewport }).promise
       pages.push({ pageNumber, data: canvas.toBuffer('image/png') })
     }
-    return { text: '', pageCount, pages }
+    return { text: renderPdfTextPages(embeddedPages), embeddedPages, pageCount, pages }
   } catch (error) {
     signal?.throwIfAborted()
     const detail = error instanceof Error ? error.message : String(error)
@@ -844,6 +850,29 @@ async function openPdf(
   } finally {
     if (loadingTask !== undefined) await loadingTask.destroy()
   }
+}
+
+function renderPdfTextPages(pages: readonly PdfTextPage[]): string {
+  return pages.map(page => `Page ${page.pageNumber}\n${page.text}`).join('\n\n').trim()
+}
+
+function mergePdfText(embeddedPages: readonly PdfTextPage[], ocrText: string): string {
+  const pages = new Map<number, string>(embeddedPages.map(page => [page.pageNumber, page.text]))
+  const marker = /(?:^|\n)Page (\d+)\n([\s\S]*?)(?=\nPage \d+\n|$)/g
+  let matched = false
+  for (const match of ocrText.matchAll(marker)) {
+    const pageNumber = Number(match[1])
+    const text = match[2]?.trim()
+    if (!Number.isSafeInteger(pageNumber) || text === undefined || text.length === 0) continue
+    pages.set(pageNumber, text)
+    matched = true
+  }
+  if (!matched && ocrText.trim().length > 0) return [renderPdfTextPages(embeddedPages), ocrText.trim()].filter(Boolean).join('\n\n')
+  return [...pages.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([pageNumber, text]) => `Page ${pageNumber}\n${text}`)
+    .join('\n\n')
+    .trim()
 }
 
 function unreachableStage(stage: never): never {

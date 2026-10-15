@@ -90,7 +90,7 @@ These limits define which runs produce records and what the node exposes; they a
 - **Only top-level calls through `dsh-tool-workflow` produce these records** — nested PTC mode calls and direct `WorkflowEngine` consumers do not.
 - **Navigation is intentionally live-only** — terminal members remain visible for review but never expose a cold-session opener from this node.
 - **The node shows run, phase, member identity, and status only** — scripts, outputs, errors, logs, usage, static topology, and controls remain outside this surface.
-- **The research page still defers concrete capabilities** — a simple simulation adapter, scanned-PDF/OCR extraction, deliverable presentation, and complete Host–Client Remote end-to-end coverage remain future work.
+- **The research page still defers concrete capabilities** — a simple simulation adapter, deliverable presentation, and complete Host–Client Remote end-to-end coverage remain future work; scanned-PDF/OCR extraction is provided by the Host workflow.
 
 <a id="dev-note"></a>
 ### Dev Note

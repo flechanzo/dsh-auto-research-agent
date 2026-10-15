@@ -90,7 +90,7 @@ kind: "package-reference"
 - **只有经 `dsh-tool-workflow` 发起的顶层调用会生成这些记录**：嵌套 PTC mode 调用和直接 `WorkflowEngine` 消费方不会生成。
 - **导航刻意只面向实时运行**：终态成员继续保留供复盘，但本节点永不为其提供冷会话入口。
 - **节点只显示运行、阶段、成员身份与状态**：脚本、输出、错误、日志、用量、静态拓扑与控制操作都不属于本界面。
-- **科研页面仍有延期能力**：简单仿真适配器、扫描 PDF/OCR、deliverable 展示和完整 Host–Client Remote 端到端测试仍待接入。
+- **科研页面仍有延期能力**：简单仿真适配器、deliverable 展示和完整 Host–Client Remote 端到端测试仍待接入；扫描版 PDF/OCR 由 Host workflow 提供。
 
 <a id="dev-note"></a>
 ### 开发备注

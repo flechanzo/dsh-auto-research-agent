@@ -13,7 +13,7 @@
 - **Web 工作流界面——第一阶段已完成。** 现有工作流 UI 在会话标题栏增加“自动科研流程”入口，并在右侧 Sidebar 提供论文上传、阶段输出、确认、反馈、拒绝分支、历史导航、审查角色和仿真/科研方案选择。
 - **Host 协调器——第二阶段已完成。** `ResearchCoordinator` 现在只推进已确认节点，读取持久化论文附件，通过 `ctx.web` 检索，委派摘要、问题提炼、想法生成、完善以及方法／创新性／可复现性并行审查，在独立分支中保留被拒绝想法，并在使用 `createHostResearchCoordinator()` 组装时通过 `ctx.fs` 写入当前分支的 Markdown 方案。
 - **浏览器接入与恢复——当前阶段已完成。** Web 面板现在读写 Session-scoped `research` Remote，通过 `ctx.fileUpload` 上传论文字节，渲染返回的 artifact，使用带 revision 检查的 DAG sidecar 持久化，并在刷新后恢复状态。选择历史节点后可以按记录的 Session 边界恢复为新的会话分支；确认研究方向后会运行第二轮针对性文献调研；最终方案同时显示 Markdown 和写入文件路径。Host／Client project graph、生成的 Typert Remote artifact、API Remote 聚合和 Web profile 行均已接线。本地 Web profile 启动时不再出现 `research-controller` 导入警告。
-- **扫描版 PDF/OCR——本检查点已完成。** Host 读取器先用 PDF.js 提取内嵌文本，并把文本层很短的 PDF 视为不完整；随后按配置的页数、缩放和像素预算用 native canvas 渲染 PNG，通过 `AttachmentStore` 持久化，再交给视觉 OCR subagent。返回文档记录 `plain-text`、`embedded-text` 或 `ocr` 提取方式和检查页数，保留页码标记；OCR 不可用、缺少父 Agent、结果为空或单页失败时分别返回明确的 `PDF_OCR_UNAVAILABLE`、`PDF_OCR_PARENT_REQUIRED`、`PDF_OCR_EMPTY` 和 `PDF_OCR_FAILED` 错误。
+- **扫描版 PDF/OCR——本检查点已完成。** Host 读取器按页使用 PDF.js，保留可用的内嵌文本页，并把缺失或很短的页面文本视为不完整；随后按配置的页数、缩放和像素预算用 native canvas 渲染 PNG，通过 `AttachmentStore` 持久化，只把缺失或稀疏页面交给视觉 OCR subagent。返回文档会按原始页序合并内嵌文本和 OCR 页面，记录 `plain-text`、`embedded-text` 或 `ocr` 提取方式和检查页数，保留页码标记；OCR 不可用、缺少父 Agent、结果为空或单页失败时分别返回明确的 `PDF_OCR_UNAVAILABLE`、`PDF_OCR_PARENT_REQUIRED`、`PDF_OCR_EMPTY` 和 `PDF_OCR_FAILED` 错误。
 - **智能体选择入口——当前界面修复已完成。** 新会话首页现在把原有 preset 控件明确标为“智能体”，Web bundle 新增“自动科研智能体”。选择后会加载科研流程提示词，并保留论文、联网检索、子智能体、审查和方案工具。
 
 ## 验证证据
