@@ -1819,6 +1819,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'request', description: 'Session, revision, and source node identity.' }],
         returns: 'The committed snapshot with the continuation selected.',
       },
+      {
+        signature: '@Remote(\'restore\') restore(request: ResearchRestoreRequest): Promise<ResearchCommandValue>',
+        description: 'Restore a historical stage by forking the Session at its recorded boundary.',
+        parameters: [{ name: 'request', description: 'Session, revision, and historical node identity.' }],
+        returns: 'The new Session snapshot with the selected historical branch.',
+      },
     ],
   },
   {
@@ -6207,6 +6213,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResearchRejectRequest',
     declaration: 'export interface ResearchRejectRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly reason?: string;\n}',
+  },
+  {
+    name: 'ResearchRestoreRequest',
+    declaration: 'export interface ResearchRestoreRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly nodeId: string;\n}',
   },
   {
     name: 'ResearchSelectBranchRequest',

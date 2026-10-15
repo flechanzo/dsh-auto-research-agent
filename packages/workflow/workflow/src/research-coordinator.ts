@@ -1,10 +1,13 @@
 /** Host-side execution coordinator for the human-confirmed research DAG. */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { fileURLToPath } from 'node:url'
 import type {
   AttachmentStore,
   FileAttachmentRef,
 } from '@deepseek-ai/dsh-attachment'
+import { createCanvas } from '@napi-rs/canvas'
+import { getDocument, type PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type {
   ContentBlock,
 } from '@deepseek-ai/dsh-llm'
@@ -36,6 +39,41 @@ export interface ResearchPaperDocument {
   readonly text: string
   /** Number of bytes read from the attachment. */
   readonly byteLength: number
+  /** Extraction path used for this document. */
+  readonly extractionMethod: ResearchPaperExtractionMethod
+  /** Number of PDF pages inspected, when the upload was a PDF. */
+  readonly pageCount?: number
+}
+
+/** Extraction path reported to the user and research-session log. */
+export type ResearchPaperExtractionMethod = 'plain-text' | 'embedded-text' | 'ocr'
+
+/** One rendered page supplied to an OCR adapter. */
+export interface ResearchPaperOcrPage {
+  /** One-based page number in the source PDF. */
+  readonly pageNumber: number
+  /** PNG bytes for the rendered page. */
+  readonly data: Uint8Array
+}
+
+/** OCR request for a bounded set of PDF pages. */
+export interface ResearchPaperOcrInput {
+  /** Original uploaded filename. */
+  readonly fileName: string
+  /** Rendered pages in source order. */
+  readonly pages: readonly ResearchPaperOcrPage[]
+}
+
+/** OCR capability used when a PDF has no usable text layer. */
+export interface ResearchPaperOcr {
+  /**
+   * Recognize all supplied pages.
+   * @param input - Bounded rendered pages and source filename.
+   * @param parent - Agent that owns the visual child-agent runs.
+   * @param signal - Optional cancellation signal.
+   * @returns OCR text with page markers.
+   */
+  recognize(input: ResearchPaperOcrInput, parent: Agent, signal?: AbortSignal): Promise<string>
 }
 
 /** Reads one durable paper attachment into bounded text. */
@@ -44,9 +82,28 @@ export interface ResearchPaperReader {
    * Read and extract a paper.
    * @param paper - Durable uploaded file reference.
    * @param signal - Optional cancellation signal.
+   * @param context - Parent agent used by the OCR adapter when needed.
    * @returns Extracted paper text.
    */
-  read(paper: FileAttachmentRef, signal?: AbortSignal): Promise<ResearchPaperDocument>
+  read(paper: FileAttachmentRef, signal?: AbortSignal, context?: ResearchPaperReadContext): Promise<ResearchPaperDocument>
+}
+
+/** Optional execution context for a paper read. */
+export interface ResearchPaperReadContext {
+  /** Parent Agent for visual OCR delegation. */
+  readonly parent?: Agent
+}
+
+/** Host limits and OCR adapter for PDF extraction. */
+export interface ResearchPaperReaderOptions {
+  /** Maximum number of PDF pages inspected and rendered. */
+  readonly maxPdfPages?: number
+  /** Initial PDF rendering scale before pixel capping. */
+  readonly ocrScale?: number
+  /** Maximum width × height for each rendered OCR page. */
+  readonly maxOcrPixels?: number
+  /** Optional visual OCR implementation. */
+  readonly ocr?: ResearchPaperOcr
 }
 
 /** One normalized source returned by a literature provider. */
@@ -229,10 +286,10 @@ export class ResearchCoordinator {
 
   private async readAndSummarize(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     if (request.paper === undefined) throw new Error('paper attachment is required before paper reading')
-    const paper = await this.adapters.papers.read(request.paper, request.signal)
+    const paper = await this.adapters.papers.read(request.paper, request.signal, { parent: request.parent })
     const summary = await this.adapters.agents.run(
       'paper-summarizer',
-      `Read the uploaded research paper below. Return a faithful structured summary with the question, method, data, results, limitations, and evidence. Do not invent facts.\n\nFile: ${paper.fileName}\n\n${paper.text}`,
+      `Read the uploaded research paper below. Return a faithful structured summary with the question, method, data, results, limitations, and evidence. Do not invent facts. The extraction method was ${paper.extractionMethod}; the inspected page count was ${paper.pageCount ?? 'not applicable'}. If OCR was used, mark uncertain characters and avoid silently completing unreadable text.\n\nFile: ${paper.fileName}\n\n${paper.text}`,
       request.parent,
       request.signal,
     )
@@ -240,7 +297,7 @@ export class ResearchCoordinator {
       stage: 'paper-read',
       kind: 'summary',
       title: `论文摘要：${paper.fileName}`,
-      content: summary,
+      content: `论文读取方式：${paper.extractionMethod}；检查页数：${paper.pageCount ?? '不适用'}。\n\n${summary}`,
       source: paper.fileName,
     }, Date.now())
     return this.withLatestArtifact(state)
@@ -425,11 +482,17 @@ export class ResearchCoordinator {
  * Build a Host paper reader backed by the durable attachment service.
  * @param attachments - Durable attachment provider that owns the uploaded bytes.
  * @param maxBytes - Explicit extraction limit for one paper.
+ * @param options - PDF page, raster, and OCR limits.
  * @returns A bounded paper reader adapter.
  */
-export function createAttachmentPaperReader(attachments: AttachmentStore, maxBytes: number): ResearchPaperReader {
+export function createAttachmentPaperReader(
+  attachments: AttachmentStore,
+  maxBytes: number,
+  options: ResearchPaperReaderOptions = {},
+): ResearchPaperReader {
+  const resolved = resolvePaperReaderOptions(options)
   return {
-    async read(paper, signal) {
+    async read(paper, signal, context) {
       const chunks: Uint8Array[] = []
       let byteLength = 0
       for await (const chunk of attachments.readFileStream(paper, signal)) {
@@ -440,9 +503,42 @@ export function createAttachmentPaperReader(attachments: AttachmentStore, maxByt
       const bytes = new Uint8Array(byteLength)
       let offset = 0
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-      const text = decodePaperText(bytes, paper.name)
-      if (text.trim().length === 0) throw new Error(`paper "${paper.name}" produced no readable text`)
-      return { fileName: paper.name, text, byteLength }
+      signal?.throwIfAborted()
+      if (!isPdfUpload(bytes, paper.name)) {
+        const text = new TextDecoder().decode(bytes)
+        if (text.trim().length === 0) throw new Error(`paper "${paper.name}" produced no readable text`)
+        return { fileName: paper.name, text, byteLength, extractionMethod: 'plain-text' }
+      }
+
+      const pdf = await openPdf(bytes, paper.name, resolved, signal)
+      if (pdf.text.trim().length > 0) {
+        return {
+          fileName: paper.name,
+          text: pdf.text,
+          byteLength,
+          extractionMethod: 'embedded-text',
+          pageCount: pdf.pageCount,
+        }
+      }
+      if (resolved.ocr === undefined) {
+        throw new Error('PDF_OCR_UNAVAILABLE: this PDF has no usable text layer and no OCR adapter is configured')
+      }
+      if (context?.parent === undefined) {
+        throw new Error('PDF_OCR_PARENT_REQUIRED: OCR requires the parent Agent used for visual delegation')
+      }
+      const text = await resolved.ocr.recognize(
+        { fileName: paper.name, pages: pdf.pages },
+        context.parent,
+        signal,
+      )
+      if (text.trim().length === 0) throw new Error(`PDF_OCR_EMPTY: OCR produced no readable text for "${paper.name}"`)
+      return {
+        fileName: paper.name,
+        text,
+        byteLength,
+        extractionMethod: 'ocr',
+        pageCount: pdf.pageCount,
+      }
     },
   }
 }
@@ -509,6 +605,68 @@ export function createSubagentResearchRunner(subagents: SubagentRuntime, provide
   }
 }
 
+/**
+ * Build a page-by-page visual OCR adapter backed by the named subagent provider.
+ * @param attachments - Durable image store used to make rendered pages model-visible.
+ * @param subagents - Subagent runtime that owns visual child lifecycle.
+ * @param provider - Registered provider name.
+ * @returns OCR adapter that preserves page order and visible uncertainty.
+ */
+export function createSubagentResearchOcr(
+  attachments: AttachmentStore,
+  subagents: SubagentRuntime,
+  provider: string,
+): ResearchPaperOcr {
+  return {
+    async recognize(input, parent, signal) {
+      const pages: string[] = []
+      for (const page of input.pages) {
+        signal?.throwIfAborted()
+        let run: Awaited<ReturnType<SubagentRuntime['start']>> | undefined
+        try {
+          const image = await attachments.saveImage({
+            data: page.data,
+            mediaType: 'image/png',
+            name: `${input.fileName}.page-${page.pageNumber}.png`,
+          })
+          run = await subagents.start(provider, {
+            parent,
+            label: 'research:paper-ocr',
+            prompt: [
+              {
+                type: 'text',
+                text: `Perform faithful OCR for page ${page.pageNumber} of ${input.fileName}. Transcribe every readable word, equation, table label, and footnote in reading order. Preserve line breaks where they carry meaning. Mark uncertain characters as [?] and never summarize or invent missing text. Return only the transcription.`,
+              },
+              { type: 'image', attachment: image },
+            ],
+            signal: signal ?? new AbortController().signal,
+          })
+          const result = await run.result
+          if (result.stopReason !== 'completed') {
+            throw new Error(`OCR agent stopped with ${result.stopReason}`)
+          }
+          const text = result.output
+            .filter((block: ContentBlock): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+            .map(block => block.text)
+            .join('\n')
+            .trim()
+          if (text.length === 0) throw new Error('OCR agent returned no visible text')
+          pages.push(`Page ${page.pageNumber}\n${text}`)
+        } catch (error) {
+          signal?.throwIfAborted()
+          const detail = error instanceof Error ? error.message : String(error)
+          throw new Error(`PDF_OCR_FAILED: page ${page.pageNumber}: ${detail}`, { cause: error })
+        } finally {
+          if (run !== undefined) await run.dispose()
+        }
+      }
+      const text = pages.join('\n\n')
+      if (text.trim().length === 0) throw new Error('PDF_OCR_EMPTY: OCR produced no readable text')
+      return text
+    },
+  }
+}
+
 /** Options used when assembling all configured Host capabilities. */
 export interface HostResearchCoordinatorOptions {
   /** Named subagent provider used for every research role. */
@@ -519,6 +677,12 @@ export interface HostResearchCoordinatorOptions {
   readonly maxPaperBytes: number
   /** Maximum literature sources returned from the configured provider. */
   readonly maxLiteratureResults: number
+  /** Maximum PDF pages inspected and rendered for OCR. */
+  readonly maxPdfPages: number
+  /** Initial PDF rendering scale before pixel capping. */
+  readonly ocrScale: number
+  /** Maximum pixels in one rendered OCR page. */
+  readonly maxOcrPixels: number
 }
 
 /** Host capabilities needed to assemble a coordinator from the DSH services. */
@@ -548,7 +712,12 @@ export function createHostResearchCoordinator(
     },
   }
   return new ResearchCoordinator({
-    papers: createAttachmentPaperReader(services.attachments, options.maxPaperBytes),
+    papers: createAttachmentPaperReader(services.attachments, options.maxPaperBytes, {
+      maxPdfPages: options.maxPdfPages,
+      ocrScale: options.ocrScale,
+      maxOcrPixels: options.maxOcrPixels,
+      ocr: createSubagentResearchOcr(services.attachments, services.subagents, options.subagentProvider),
+    }),
     literature: createWebLiteratureSearcher(services.web, options.maxLiteratureResults),
     agents: createSubagentResearchRunner(services.subagents, options.subagentProvider),
     planWriter,
@@ -581,18 +750,100 @@ export function renderResearchPlan(artifacts: readonly ResearchArtifact[]): stri
   ].join('\n\n') + '\n'
 }
 
-function decodePaperText(bytes: Uint8Array, fileName: string): string {
-  const decoded = new TextDecoder().decode(bytes)
-  if (!fileName.toLowerCase().endsWith('.pdf') && !decoded.startsWith('%PDF')) return decoded
-  const strings: string[] = []
-  for (const match of decoded.matchAll(/BT([\s\S]*?)ET/g)) {
-    const block = match[1] ?? ''
-    for (const text of block.matchAll(/\(([^)]*)\)\s*T[Jj]/g)) strings.push(text[1] ?? '')
+interface PdfExtraction {
+  readonly text: string
+  readonly pageCount: number
+  readonly pages: readonly ResearchPaperOcrPage[]
+}
+
+interface ResolvedPaperReaderOptions {
+  readonly maxPdfPages: number
+  readonly ocrScale: number
+  readonly maxOcrPixels: number
+  readonly ocr?: ResearchPaperOcr
+}
+
+const DEFAULT_PDF_PAGES = 12
+const DEFAULT_OCR_SCALE = 1.5
+const DEFAULT_MAX_OCR_PIXELS = 4_000_000
+const MIN_EMBEDDED_TEXT = 24
+
+function resolvePaperReaderOptions(options: ResearchPaperReaderOptions): ResolvedPaperReaderOptions {
+  const maxPdfPages = options.maxPdfPages ?? DEFAULT_PDF_PAGES
+  const ocrScale = options.ocrScale ?? DEFAULT_OCR_SCALE
+  const maxOcrPixels = options.maxOcrPixels ?? DEFAULT_MAX_OCR_PIXELS
+  if (!Number.isSafeInteger(maxPdfPages) || maxPdfPages < 1) throw new Error('maxPdfPages must be a positive integer')
+  if (!Number.isFinite(ocrScale) || ocrScale <= 0) throw new Error('ocrScale must be a positive number')
+  if (!Number.isSafeInteger(maxOcrPixels) || maxOcrPixels < 1) throw new Error('maxOcrPixels must be a positive integer')
+  return { maxPdfPages, ocrScale, maxOcrPixels, ...(options.ocr === undefined ? {} : { ocr: options.ocr }) }
+}
+
+function isPdfUpload(bytes: Uint8Array, fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.pdf')
+    || bytes.length >= 5 && new TextDecoder().decode(bytes.subarray(0, 5)) === '%PDF-'
+}
+
+async function openPdf(
+  bytes: Uint8Array,
+  fileName: string,
+  options: ResolvedPaperReaderOptions,
+  signal?: AbortSignal,
+): Promise<PdfExtraction> {
+  signal?.throwIfAborted()
+  let document: PDFDocumentProxy | undefined
+  let loadingTask: ReturnType<typeof getDocument> | undefined
+  try {
+    loadingTask = getDocument({
+      data: bytes,
+      useWorkerFetch: false,
+      stopAtErrors: false,
+      disableFontFace: true,
+      standardFontDataUrl: `${fileURLToPath(new URL('../node_modules/pdfjs-dist/standard_fonts/', import.meta.url))}/`,
+    })
+    document = await loadingTask.promise
+    const pageCount = document.numPages
+    const pagesToRead = Math.min(pageCount, options.maxPdfPages)
+    const textPages: string[] = []
+    for (let pageNumber = 1; pageNumber <= pagesToRead; pageNumber += 1) {
+      signal?.throwIfAborted()
+      const page = await document.getPage(pageNumber)
+      const content = await page.getTextContent()
+      const pageText = content.items
+        .map(item => 'str' in item ? item.str : '')
+        .filter(text => text.trim().length > 0)
+        .join(' ')
+      if (pageText.trim().length > 0) textPages.push(`Page ${pageNumber}\n${pageText}`)
+    }
+    const text = textPages.join('\n\n').trim()
+    if (text.length >= MIN_EMBEDDED_TEXT) return { text, pageCount, pages: [] }
+
+    const pages: ResearchPaperOcrPage[] = []
+    for (let pageNumber = 1; pageNumber <= pagesToRead; pageNumber += 1) {
+      signal?.throwIfAborted()
+      const page = await document.getPage(pageNumber)
+      const initialViewport = page.getViewport({ scale: options.ocrScale })
+      const requestedPixels = initialViewport.width * initialViewport.height
+      const capScale = requestedPixels > options.maxOcrPixels
+        ? Math.sqrt(options.maxOcrPixels / requestedPixels)
+        : 1
+      const viewport = capScale === 1
+        ? initialViewport
+        : page.getViewport({ scale: options.ocrScale * capScale })
+      const width = Math.max(1, Math.ceil(viewport.width))
+      const height = Math.max(1, Math.ceil(viewport.height))
+      const canvas = createCanvas(width, height)
+      const context = canvas.getContext('2d')
+      await page.render({ canvas: null, canvasContext: context as never, viewport }).promise
+      pages.push({ pageNumber, data: canvas.toBuffer('image/png') })
+    }
+    return { text: '', pageCount, pages }
+  } catch (error) {
+    signal?.throwIfAborted()
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`PDF_TEXT_EXTRACTION_FAILED: ${fileName}: ${detail}`, { cause: error })
+  } finally {
+    if (loadingTask !== undefined) await loadingTask.destroy()
   }
-  if (strings.length === 0) {
-    throw new Error('PDF_TEXT_EXTRACTION_UNAVAILABLE: configure a Host PDF parser for scanned or compressed PDFs')
-  }
-  return strings.join(' ')
 }
 
 function unreachableStage(stage: never): never {

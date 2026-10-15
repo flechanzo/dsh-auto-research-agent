@@ -11,7 +11,7 @@ kind: "package-reference"
 
 运行一段 JavaScript 编排脚本，将工作扇出给 subagent，并返回最终 JSON 值。脚本通过 `workflow` 工具使用 `agent()`、`parallel()`、`pipeline()`、`phase()` 和 `log()`。每次运行都归调用方所有，记录子 agent（智能体）归属，并在 dispose（资源释放）期间等待脚本与子 agent 清理完成。调用方提供执行引擎。
 
-仅 Host 使用的 `ResearchCoordinator` 按确认推进论文阅读与文献研究 DAG，委派摘要、想法生成、完善和并行审查；确认研究方向后会再做一次针对性文献调研，并从当前分支渲染 Markdown 方案。`createHostResearchCoordinator()` 组装附件、Web、subagent 和 Session 文件系统适配器。
+仅 Host 使用的 `ResearchCoordinator` 按确认推进论文阅读与文献研究 DAG，委派摘要、想法生成、完善和并行审查；确认研究方向后会再做一次针对性文献调研，并从当前分支渲染 Markdown 方案。PDF 读取器使用 PDF.js 提取内嵌文本；文本层缺失或过短时，会用 native canvas 渲染有上限的页面，并把图片交给视觉 OCR subagent。`createHostResearchCoordinator()` 组装附件、Web、subagent、OCR 和 Session 文件系统适配器。
 
 ## 目录
 
@@ -60,7 +60,7 @@ return { reviewed: reviews.length }
 
 ### 人工确认式科研运行
 
-`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取持久化 `FileAttachmentRef`，通过 `ctx.web` 做初始和针对性检索，运行命名的 subagent 角色，通过 `ctx.fs` 写入最终 Markdown 文件，并把仿真保留为显式可选适配器。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
+`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 `ctx.web` 做初始和针对性检索，运行命名的 subagent 角色，通过 `ctx.fs` 写入最终 Markdown 文件，并把仿真保留为显式可选适配器。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
 
 -----
 
@@ -137,7 +137,7 @@ return { reviewed: reviews.length }
 - **没有已保存或嵌套工作流**——该能力只启动调用方提供的脚本，工作流脚本不会收到用于递归编排的 `workflow()` 钩子。
 - **没有 token 预算词汇**——引擎限制并发、条目与子 agent，但请求与结果都不会统计跨子 agent 的模型 token。
 - **运行由持有方负责，不由服务跟踪**——卸载引擎不会发现独立的活动句柄；每个消费方都必须 dispose 自己启动的运行。
-- **科研状态由 Session-scoped sidecar 保存，尚未成为 Session 事件**——research Remote 保存 DAG、历史分支和节点的 Session 边界；恢复某一轮会创建新 Session，同时保留 sidecar 中已有的后续节点和分支。PDF 读取器支持文本和简单的文本型 PDF；扫描件或压缩 PDF 需要替换读取适配器。
+- **科研状态由 Session-scoped sidecar 保存，尚未成为 Session 事件**——research Remote 保存 DAG、历史分支和节点的 Session 边界；恢复某一轮会创建新 Session，同时保留 sidecar 中已有的后续节点和分支。PDF OCR 受页数、缩放和像素上限约束，需要配置视觉 subagent；OCR 失败会以明确错误返回调用方。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -200,6 +200,13 @@ Host service backing `ctx.remote.research`.
  * @returns The committed snapshot with the continuation selected.
  */
 @Remote('continueFromNode') continueFromNode(request: ResearchContinueRequest): Promise<ResearchCommandValue>
+
+/**
+ * Restore a historical stage by forking the Session at its recorded boundary.
+ * @param request - Session, revision, and historical node identity.
+ * @returns The new Session snapshot with the selected historical branch.
+ */
+@Remote('restore') restore(request: ResearchRestoreRequest): Promise<ResearchCommandValue>
 ```
 
 Source: [`packages/api/research-controller/src/index.ts`](../../packages/api/research-controller/src/index.ts)

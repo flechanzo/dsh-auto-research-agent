@@ -160,6 +160,12 @@ export interface Config {
   readonly maxPaperBytes?: number
   /** Maximum Web sources included in one literature step. */
   readonly maxLiteratureResults?: number
+  /** Maximum PDF pages inspected and rendered for OCR. */
+  readonly maxPdfPages?: number
+  /** Initial PDF rendering scale before pixel capping. */
+  readonly ocrScale?: number
+  /** Maximum width × height for one rendered OCR page. */
+  readonly maxOcrPixels?: number
 }
 
 type ResolvedConfig = Required<Config>
@@ -173,6 +179,9 @@ export class ResearchController extends TypertRemoteService {
     planPath: z.string().default('research-plan.md'),
     maxPaperBytes: z.natural().min(1).default(20 * 1024 * 1024),
     maxLiteratureResults: z.natural().min(1).max(50).default(8),
+    maxPdfPages: z.number().step(1).min(1).max(100).default(12),
+    ocrScale: z.number().min(0.25).max(4).default(1.5),
+    maxOcrPixels: z.number().step(1).min(1).max(16_000_000).default(4_000_000),
   })
 
   private readonly config: ResolvedConfig
@@ -299,7 +308,11 @@ export class ResearchController extends TypertRemoteService {
     })
   }
 
-  /** Restore a historical stage by forking the Session at its recorded boundary. */
+  /**
+   * Restore a historical stage by forking the Session at its recorded boundary.
+   * @param request - Session, revision, and historical node identity.
+   * @returns The new Session snapshot with the selected historical branch.
+   */
   @Remote('restore')
   restore(request: ResearchRestoreRequest): Promise<ResearchCommandValue> {
     return this.serialize(async () => {
@@ -352,6 +365,9 @@ export class ResearchController extends TypertRemoteService {
       planPath: this.config.planPath,
       maxPaperBytes: this.config.maxPaperBytes,
       maxLiteratureResults: this.config.maxLiteratureResults,
+      maxPdfPages: this.config.maxPdfPages,
+      ocrScale: this.config.ocrScale,
+      maxOcrPixels: this.config.maxOcrPixels,
     })
     const result: ResearchAdvanceResult = await coordinator.advance({
       state: prepared.state,

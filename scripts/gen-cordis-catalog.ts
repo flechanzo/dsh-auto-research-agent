@@ -940,6 +940,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ResearchFeedbackRequest: 'research Remote feedback request is owned by packages/api/research-controller/README.md',
   ResearchReadRequest: 'research Remote read request is owned by packages/api/research-controller/README.md',
   ResearchRejectRequest: 'research Remote rejection request is owned by packages/api/research-controller/README.md',
+  ResearchRestoreRequest: 'research Remote restore request is owned by packages/api/research-controller/README.md',
   ResearchSelectBranchRequest: 'research Remote branch selection request is owned by packages/api/research-controller/README.md',
   ResearchSelectNodeRequest: 'research Remote node selection request is owned by packages/api/research-controller/README.md',
   ResearchSnapshot: 'research Remote snapshot contract is owned by packages/api/research-controller/README.md',

@@ -4,19 +4,26 @@ import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import {
   appendResearchOutput,
   confirmResearchNode,
+  createAttachmentPaperReader,
   createResearchState,
   rejectIdea,
   ResearchCoordinator,
   type ResearchCoordinatorAdapters,
 } from '../src/index.ts'
+import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 
 const parent = {} as Agent
 
-function adapters(searchQueries: string[] = [], planWriter: ResearchCoordinatorAdapters['planWriter'] = undefined): ResearchCoordinatorAdapters {
+function adapters(searchQueries: string[] = [], planWriter?: ResearchCoordinatorAdapters['planWriter']): ResearchCoordinatorAdapters {
   return {
     papers: {
       async read(paper) {
-        return { fileName: paper.name, text: 'A paper about retrieval under distribution shift.', byteLength: 48 }
+        return {
+          fileName: paper.name,
+          text: 'A paper about retrieval under distribution shift.',
+          byteLength: 48,
+          extractionMethod: 'plain-text',
+        }
       },
     },
     literature: {
@@ -138,3 +145,69 @@ describe('ResearchCoordinator', () => {
     expect(node?.memorySnapshot.artifactIds.some(id => state.artifacts[id]?.kind === 'literature')).toBe(true)
   })
 })
+
+describe('createAttachmentPaperReader', () => {
+  it('extracts a PDF text layer with PDF.js', async () => {
+    const bytes = testPdf('Selectable PDF text with enough words to avoid OCR fallback. This sentence keeps the embedded text layer above the OCR threshold.')
+    const attachments = attachmentReader(bytes)
+    const reader = createAttachmentPaperReader(attachments, bytes.byteLength)
+    const document = await reader.read({ attachmentId: AttachmentId('sha256:pdf'), name: 'paper.pdf', bytes: bytes.byteLength })
+    expect(document.extractionMethod).toBe('embedded-text')
+    expect(document.pageCount).toBe(1)
+    expect(document.text).toContain('Selectable PDF text')
+  })
+
+  it('renders a scanned PDF and delegates the pages to OCR', async () => {
+    const bytes = testPdf()
+    const pages: Uint8Array[] = []
+    const attachments = attachmentReader(bytes)
+    const reader = createAttachmentPaperReader(attachments, bytes.byteLength, {
+      ocr: {
+        async recognize(input) {
+          pages.push(...input.pages.map(page => page.data))
+          return 'Page 1\n扫描版论文内容'
+        },
+      },
+    })
+    const document = await reader.read(
+      { attachmentId: AttachmentId('sha256:scan'), name: 'scan.pdf', bytes: bytes.byteLength },
+      undefined,
+      { parent },
+    )
+    expect(document.extractionMethod).toBe('ocr')
+    expect(document.text).toContain('扫描版论文内容')
+    expect(pages[0]?.byteLength).toBeGreaterThan(0)
+  })
+
+  it('reports a clear error when a scanned PDF has no OCR adapter', async () => {
+    const bytes = testPdf()
+    const reader = createAttachmentPaperReader(attachmentReader(bytes), bytes.byteLength)
+    await expect(reader.read({ attachmentId: AttachmentId('sha256:no-ocr'), name: 'scan.pdf', bytes: bytes.byteLength }, undefined, { parent }))
+      .rejects.toThrow('PDF_OCR_UNAVAILABLE')
+  })
+})
+
+function attachmentReader(bytes: Uint8Array): AttachmentStore {
+  return Object.setPrototypeOf({
+    async *readFileStream() { yield bytes },
+  }, AttachmentStore.prototype) as AttachmentStore
+}
+
+function testPdf(text = ''): Uint8Array {
+  const stream = text.length === 0 ? '0 0 0 rg 10 10 100 80 re f' : `BT /F1 8 Tf 10 50 Td (${text}) Tj ET`
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  let pdf = '%PDF-1.7\n'
+  const offsets = [0]
+  objects.forEach((object, index) => { offsets.push(pdf.length); pdf += `${index + 1} 0 obj\n${object}\nendobj\n` })
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return new TextEncoder().encode(pdf)
+}

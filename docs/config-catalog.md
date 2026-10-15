@@ -222,7 +222,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-research-controller`
 
 - `inject`: `attachments` · `fs` · `sessionController` · `storageDomain` · `subagents` · `typert` · `web`
-- `source`: [`packages/api/research-controller/src/index.ts:148`](../packages/api/research-controller/src/index.ts)
+- `source`: [`packages/api/research-controller/src/index.ts:154`](../packages/api/research-controller/src/index.ts)
 
 ```ts config-catalog
 /** Host limits and provider selection for automatic research. */
@@ -235,6 +235,12 @@ export interface Config {
   readonly maxPaperBytes?: number
   /** Maximum Web sources included in one literature step. */
   readonly maxLiteratureResults?: number
+  /** Maximum PDF pages inspected and rendered for OCR. */
+  readonly maxPdfPages?: number
+  /** Initial PDF rendering scale before pixel capping. */
+  readonly ocrScale?: number
+  /** Maximum width × height for one rendered OCR page. */
+  readonly maxOcrPixels?: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-research-controller -->
