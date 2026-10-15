@@ -26,7 +26,7 @@ The Host controller requires the attachment, Session filesystem, Session control
 
 The Client calls `research.read({ sessionId })` to load the current revision. `research.upload` stores the uploaded `FileAttachmentRef`, reads the paper, and returns the summary artifact for confirmation; the next `research.confirm` runs problem extraction. Later confirmations advance one stage; after the improvement direction is confirmed, the coordinator performs a targeted literature search before multi-agent review. `research.feedback` records human feedback, and `research.reject` creates an isolated idea branch. `research.selectBranch` and `research.selectNode` change the displayed selection; `research.continueFromNode` starts a new branch from a historical node, while `research.restore` forks a new Session at the node's recorded event boundary and restores that conversation memory. Every mutating request carries `expectedRevision`; a stale value fails with `research/stale`, so the caller must read the returned state before retrying.
 
-The controller passes provider work to `createHostResearchCoordinator()`. The coordinator reads the attachment, extracts PDF text with PDF.js, and for scanned pages renders bounded PNG images for a visual OCR subagent. It searches `ctx.web` for both the initial problem and the confirmed direction, delegates summarization, ideation, refinement, and parallel reviews to the configured subagent provider, and writes the selected final plan through `ctx.fs`. The final artifact keeps the Markdown content and the persisted file path. A simulation remains an explicit coordinator adapter and is selected by `research.confirm` at the simulation-or-plan checkpoint.
+The controller passes provider work to `createHostResearchCoordinator()`. The coordinator reads the attachment, extracts PDF text with PDF.js, and for scanned pages renders bounded PNG images for a visual OCR subagent. It can combine the general Web search with arXiv machine-learning categories, de-duplicates returned URLs, and repeats the selected sources after direction confirmation. Direction weights for novelty, impact, feasibility, and reproducibility are included in idea prompts. Each generated or refined idea is sent to a fresh `innovation-reviewer` child with only the candidate and literature evidence; low scores and high overlap with cited work are discarded and retried. Accepted artifacts retain the score, threshold, overlap result, and rationale for the UI and final plan. The coordinator delegates summarization, ideation, refinement, and parallel reviews to the configured subagent provider, and writes the selected final plan through `ctx.fs`. The final artifact keeps the Markdown content and the persisted file path. A simulation remains an explicit coordinator adapter and is selected by `research.confirm` at the simulation-or-plan checkpoint.
 
 New nodes record the source Session that owns their event boundary, so later nodes retained after a restore can be restored from that source Session. A restore cuts the source Session's conversation prefix but copies the complete research sidecar, so every later branch remains selectable; to edit a later node from the source Session, restore that node again first, and the controller rejects confirmation, feedback, or rejection from the wrong Session. Legacy sidecars without a recorded source Session fall back to the current Session.
 
@@ -38,6 +38,9 @@ New nodes record the source Session that owns their event boundary, so later nod
 | `planPath` | `research-plan.md` | Relative output path inside the Session workspace |
 | `maxPaperBytes` | `20,971,520` | Maximum paper bytes read into a summarizer prompt |
 | `maxLiteratureResults` | `8` | Maximum Web results included in one literature step |
+| `literatureSources` | `['web', 'arxiv']` | Default search backends; arXiv requests target machine-learning categories |
+| `innovationScoreThreshold` | `70` | Minimum isolated expert score for an idea to reach the user |
+| `maxIdeaAttempts` | `3` | Maximum candidates generated at one idea checkpoint |
 | `maxPdfPages` | `12` | Maximum PDF pages inspected or rendered for OCR |
 | `ocrScale` | `1.5` | Initial raster scale before the pixel cap is applied |
 | `maxOcrPixels` | `4,000,000` | Maximum width × height of one rendered OCR page |
@@ -61,6 +64,7 @@ No direct effect; the controller delegates model work to the configured provider
 - Research state is process-local to the configured storage backend. A deployment must use a durable backend when state must survive a Host restart.
 - The controller serializes commands in one Host service instance. A horizontally scaled deployment must route a Session's commands to one owner or add a shared write fence.
 - Literature search and subagent review require the configured Web and subagent providers; without them the advancing command returns the provider error.
+- arXiv uses the configured Web fetch provider to retrieve its Atom feed. A fetch failure stops that search step, so deployments that enable arXiv must allow `export.arxiv.org` through their Web policy.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -26,7 +26,9 @@ import {
   selectedResearchNode,
   setResearchReviewerRoles,
   type ResearchArtifact,
-  type ResearchOutputInput,
+  type ResearchDirectionWeights,
+  type ResearchInnovationEvaluation,
+  type ResearchLiteratureSourceId,
   type ResearchStage,
   type ResearchState,
 } from './research.ts'
@@ -110,6 +112,8 @@ export interface ResearchPaperReaderOptions {
 export interface ResearchLiteratureSource {
   /** Citeable URL. */
   readonly url: string
+  /** Backend that returned this source. */
+  readonly provider?: ResearchLiteratureSourceId
   /** Provider title when available. */
   readonly title?: string
   /** Provider snippet when available. */
@@ -124,9 +128,18 @@ export interface ResearchLiteratureSearcher {
    * Search for papers related to a problem statement.
    * @param query - Problem-derived search query.
    * @param signal - Optional cancellation signal.
+   * @param options - Optional backend selection and result limit.
    * @returns Normalized citeable sources.
    */
-  search(query: string, signal?: AbortSignal): Promise<readonly ResearchLiteratureSource[]>
+  search(query: string, signal?: AbortSignal, options?: ResearchLiteratureSearchOptions): Promise<readonly ResearchLiteratureSource[]>
+}
+
+/** Backend selection for one literature search. */
+export interface ResearchLiteratureSearchOptions {
+  /** Sources to query; omitted uses the configured default set. */
+  readonly sources?: readonly ResearchLiteratureSourceId[]
+  /** Maximum merged, de-duplicated sources. */
+  readonly maxResults?: number
 }
 
 /** Roles used by the coordinator when delegating model work. */
@@ -135,6 +148,7 @@ export type ResearchAgentRole =
   | 'problem-extractor'
   | 'idea-generator'
   | 'idea-refiner'
+  | 'innovation-reviewer'
   | 'method-reviewer'
   | 'novelty-reviewer'
   | 'reproducibility-reviewer'
@@ -150,6 +164,14 @@ export interface ResearchAgentRunner {
    * @returns Visible assistant text.
    */
   run(role: ResearchAgentRole, prompt: string, parent: Agent, signal?: AbortSignal): Promise<string>
+}
+
+/** Provider-independent limits for candidate scoring and retry. */
+export interface ResearchInnovationPolicy {
+  /** Minimum score required before a candidate is returned to the user. */
+  readonly scoreThreshold?: number
+  /** Maximum candidates generated for one idea checkpoint. */
+  readonly maxAttempts?: number
 }
 
 /** Optional simple simulation capability selected by the user. */
@@ -196,6 +218,8 @@ export interface ResearchCoordinatorAdapters {
   readonly agents: ResearchAgentRunner
   readonly simulation?: ResearchSimulationRunner
   readonly planWriter?: ResearchPlanWriter
+  /** Expert scoring policy for innovation candidates. */
+  readonly innovation?: ResearchInnovationPolicy
 }
 
 /** Request for one user-confirmed coordinator step. */
@@ -208,6 +232,10 @@ export interface ResearchAdvanceRequest {
   readonly paper?: FileAttachmentRef
   /** Review roles selected by the user before the review step. */
   readonly reviewerRoles?: readonly string[]
+  /** Direction emphasis copied into the next idea prompt. */
+  readonly directionWeights?: ResearchDirectionWeights
+  /** Literature backends copied into the next search prompt. */
+  readonly literatureSources?: readonly ResearchLiteratureSourceId[]
   /** Required when the simulation-or-plan choice node is reached. */
   readonly finalChoice?: 'simulation' | 'plan'
   /** Optional cancellation signal. */
@@ -319,7 +347,9 @@ export class ResearchCoordinator {
 
   private async searchLiterature(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     const problem = this.latestArtifact(request.state, 'problem')
-    const sources = await this.adapters.literature.search(problem.content, request.signal)
+    const sources = await this.adapters.literature.search(problem.content, request.signal, {
+      sources: selectedResearchNode(request.state).memorySnapshot.literatureSources,
+    })
     const content = sources.length === 0
       ? '未找到可引用的相关论文；请修改问题描述或检索条件后重试。'
       : sources.map((source, index) => {
@@ -336,36 +366,83 @@ export class ResearchCoordinator {
   private async generateIdea(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     const problem = this.latestArtifact(request.state, 'problem')
     const literature = this.latestArtifact(request.state, 'literature')
-    const idea = await this.adapters.agents.run(
-      'idea-generator',
-      `Propose one falsifiable improvement grounded in the research problem and cited literature. Explicitly label the innovation, explain why it differs from prior work, give an implementable method, baselines, ablations, metrics, and risks.\n\nProblem:\n${problem.content}\n\nLiterature:\n${literature.content}`,
-      request.parent,
-      request.signal,
-    )
-    const artifact: ResearchOutputInput = {
-      stage: 'idea-generation', kind: 'idea', title: '候选改进想法', content: idea,
-    }
-    const state = appendResearchOutput(request.state, artifact, Date.now())
-    const latest = this.latestArtifact(state, 'idea')
-    assertInnovationClaim(latest)
-    return { state, artifact: latest }
+    return this.generateEvaluatedIdea(request, {
+      stage: 'idea-generation',
+      title: '候选改进想法',
+      problem: problem.content,
+      literature: literature.content,
+    })
   }
 
   private async refineIdea(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     const idea = this.latestArtifact(request.state, 'idea')
+    const literature = this.latestArtifact(request.state, 'literature')
     const feedback = selectedResearchNode(request.state).memorySnapshot.feedback.join('\n') || '没有额外反馈；补齐可复现细节。'
-    const refined = await this.adapters.agents.run(
-      'idea-refiner',
-      `Revise the proposed research idea using the user's feedback. Preserve supported claims, make the innovation explicit, and add concrete implementation, evaluation, ablation, and failure criteria.\n\nOriginal idea:\n${idea.content}\n\nUser feedback:\n${feedback}`,
-      request.parent,
-      request.signal,
-    )
-    const state = appendResearchOutput(request.state, {
-      stage: 'idea-refinement', kind: 'idea', title: '根据反馈完善后的想法', content: refined,
-    }, Date.now())
-    const latest = this.latestArtifact(state, 'idea')
-    assertInnovationClaim(latest)
-    return { state, artifact: latest }
+    return this.generateEvaluatedIdea(request, {
+      stage: 'idea-refinement',
+      title: '根据反馈完善后的想法',
+      problem: `Existing candidate:\n${idea.content}\n\nUser feedback:\n${feedback}`,
+      literature: literature.content,
+      refinement: true,
+    })
+  }
+
+  private async generateEvaluatedIdea(
+    request: ResearchAdvanceRequest,
+    input: {
+      readonly stage: 'idea-generation' | 'idea-refinement'
+      readonly title: string
+      readonly problem: string
+      readonly literature: string
+      readonly refinement?: boolean
+    },
+  ): Promise<ResearchAdvanceResult> {
+    const memory = selectedResearchNode(request.state).memorySnapshot
+    const policy = this.adapters.innovation ?? {}
+    const threshold = policy.scoreThreshold ?? 70
+    const maxAttempts = policy.maxAttempts ?? 3
+    if (!Number.isInteger(threshold) || threshold < 0 || threshold > 100) throw new Error('innovation score threshold must be an integer from 0 to 100')
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new Error('innovation max attempts must be a positive integer')
+    const weights = memory.directionWeights
+    let lastFailure = ''
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const role: ResearchAgentRole = input.refinement ? 'idea-refiner' : 'idea-generator'
+      const idea = await this.adapters.agents.run(
+        role,
+        `${input.refinement ? 'Revise the candidate research idea' : 'Propose one research improvement'} using only the material below. Return one falsifiable, implementable candidate. Explicitly label the innovation and explain why it differs from prior work. Include method, baselines, ablations, metrics, and risks. This is candidate attempt ${attempt}; make it materially distinct from failed candidates if any.\n\nDirection weights (sum need not equal 100): novelty=${weights.novelty}, impact=${weights.impact}, feasibility=${weights.feasibility}, reproducibility=${weights.reproducibility}.\n\nProblem or candidate context:\n${input.problem}\n\nLiterature evidence:\n${input.literature}${lastFailure.length === 0 ? '' : `\n\nPrevious candidate rejection reason (do not repeat it):\n${lastFailure}`}`,
+        request.parent,
+        request.signal,
+      )
+      const candidate: ResearchArtifact = {
+        artifactId: `candidate-${attempt}`,
+        kind: 'idea',
+        title: input.title,
+        content: idea,
+        createdAt: Date.now(),
+      }
+      assertInnovationClaim(candidate)
+      const evaluationText = await this.adapters.agents.run(
+        'innovation-reviewer',
+        `You are an independent innovation expert. Do not infer or request the original conversation, user feedback, hidden state, or the source paper. Evaluate only the candidate and the literature evidence included below. Check whether the candidate is substantially distinct from the cited work. Return strict JSON only, with no Markdown: {"score":0,"overlap":false,"rationale":"..."}. score is an integer from 0 to 100; overlap is true when the candidate substantially duplicates a cited paper.\n\nCandidate:\n${idea}\n\nLiterature evidence:\n${input.literature}`,
+        request.parent,
+        request.signal,
+      )
+      const evaluation = parseInnovationEvaluation(evaluationText, threshold)
+      if (evaluation.score >= threshold && !evaluation.overlap) {
+        const state = appendResearchOutput(request.state, {
+          stage: input.stage,
+          kind: 'idea',
+          title: input.title,
+          content: idea,
+          evaluation,
+        }, Date.now())
+        const latest = this.latestArtifact(state, 'idea')
+        return { state, artifact: latest }
+      }
+      lastFailure = evaluation.rationale
+        || (evaluation.overlap ? 'candidate overlaps existing literature' : `score ${evaluation.score} is below threshold ${threshold}`)
+    }
+    throw new Error(`INNOVATION_SCORE_BELOW_THRESHOLD: no candidate passed the ${threshold} score and overlap checks after ${maxAttempts} attempts`)
   }
 
   private async reviewIdea(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
@@ -400,6 +477,7 @@ export class ResearchCoordinator {
     const sources = await this.adapters.literature.search(
       `Find recent and directly comparable research for this confirmed direction. Prioritize methods, baselines, and evidence that can challenge the proposed innovation.\n\nResearch problem:\n${problem.content}\n\nConfirmed direction:\n${idea.content}`,
       request.signal,
+      { sources: selectedResearchNode(request.state).memorySnapshot.literatureSources },
     )
     const content = sources.length === 0
       ? '确认研究方向后的针对性检索没有找到可引用的相关论文；请回到改进想法阶段调整方向。'
@@ -552,28 +630,77 @@ export function createAttachmentPaperReader(
  */
 export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number): ResearchLiteratureSearcher {
   return {
-    async search(query, signal) {
-      const result = await web.search({ query, maxResults }, signal)
-      const sources = result.sources.map((source: WebSearchSource) => ({
-        url: source.url,
-        ...source.title === undefined ? {} : { title: source.title },
-        ...source.snippet === undefined ? {} : { snippet: source.snippet },
-        ...source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt },
-      }))
-      return Promise.all(sources.map(async (source) => {
-        signal?.throwIfAborted()
-        if (source.snippet !== undefined) return source
-        try {
-          const fetched = await web.fetch({ url: source.url }, signal)
-          const snippet = fetched.body.content.slice(0, 1200)
-          return snippet.length === 0 ? source : { ...source, snippet }
-        } catch {
+    async search(query, signal, options) {
+      const sources = options?.sources === undefined || options.sources.length === 0 ? ['web', 'arxiv'] as const : options.sources
+      const limit = options?.maxResults ?? maxResults
+      const collected: ResearchLiteratureSource[] = []
+      if (sources.includes('web')) {
+        const result = await web.search({ query, maxResults: limit }, signal)
+        const webSources = result.sources.map((source: WebSearchSource) => ({
+          url: source.url,
+          provider: 'web' as const,
+          ...source.title === undefined ? {} : { title: source.title },
+          ...source.snippet === undefined ? {} : { snippet: source.snippet },
+          ...source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt },
+        }))
+        const enriched = await Promise.all(webSources.map(async (source) => {
           signal?.throwIfAborted()
-          return source
-        }
-      }))
+          if (source.snippet !== undefined) return source
+          try {
+            const fetched = await web.fetch({ url: source.url }, signal)
+            const snippet = fetched.body.content.slice(0, 1200)
+            return snippet.length === 0 ? source : { ...source, snippet }
+          } catch {
+            signal?.throwIfAborted()
+            return source
+          }
+        }))
+        collected.push(...enriched)
+      }
+      if (sources.includes('arxiv')) collected.push(...await searchArxiv(web, query, signal, limit))
+      const seen = new Set<string>()
+      return collected.filter((source) => {
+        if (seen.has(source.url)) return false
+        seen.add(source.url)
+        return true
+      }).slice(0, limit)
     },
   }
+}
+
+async function searchArxiv(
+  web: WebRuntime,
+  query: string,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<readonly ResearchLiteratureSource[]> {
+  const searchQuery = `all:${query} AND (cat:cs.LG OR cat:cs.AI OR cat:cs.CL OR cat:stat.ML)`
+  const url = `https://export.arxiv.org/api/query?search_query=${encodeURIComponent(searchQuery)}&start=0&max_results=${Math.max(1, Math.min(maxResults, 50))}&sortBy=submittedDate&sortOrder=descending`
+  const result = await web.fetch({ url }, signal)
+  const xml = result.body.content
+  const parsed: ResearchLiteratureSource[] = []
+  for (const match of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const entry = match[1] ?? ''
+    const id = xmlText(entry, 'id')
+    const title = xmlText(entry, 'title')
+    const summary = xmlText(entry, 'summary')
+    const publishedAt = xmlText(entry, 'published')
+    if (id === '') continue
+    parsed.push({
+      url: id,
+      provider: 'arxiv' as const,
+      ...(title === '' ? {} : { title }),
+      ...(summary === '' ? {} : { snippet: summary.slice(0, 1200) }),
+      ...(publishedAt === '' ? {} : { publishedAt }),
+    })
+  }
+  return parsed
+}
+
+function xmlText(xml: string, tag: string): string {
+  const match = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`).exec(xml)
+  const value = match?.[1] ?? ''
+  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim()
 }
 
 /**
@@ -684,6 +811,10 @@ export interface HostResearchCoordinatorOptions {
   readonly ocrScale: number
   /** Maximum pixels in one rendered OCR page. */
   readonly maxOcrPixels: number
+  /** Minimum isolated innovation score required before a candidate is shown. */
+  readonly innovationScoreThreshold?: number
+  /** Maximum fresh candidates generated for one idea checkpoint. */
+  readonly maxIdeaAttempts?: number
 }
 
 /** Host capabilities needed to assemble a coordinator from the DSH services. */
@@ -721,6 +852,10 @@ export function createHostResearchCoordinator(
     }),
     literature: createWebLiteratureSearcher(services.web, options.maxLiteratureResults),
     agents: createSubagentResearchRunner(services.subagents, options.subagentProvider),
+    innovation: {
+      ...(options.innovationScoreThreshold === undefined ? {} : { scoreThreshold: options.innovationScoreThreshold }),
+      ...(options.maxIdeaAttempts === undefined ? {} : { maxAttempts: options.maxIdeaAttempts }),
+    },
     planWriter,
   })
 }
@@ -873,6 +1008,28 @@ function mergePdfText(embeddedPages: readonly PdfTextPage[], ocrText: string): s
     .map(([pageNumber, text]) => `Page ${pageNumber}\n${text}`)
     .join('\n\n')
     .trim()
+}
+
+function parseInnovationEvaluation(text: string, threshold: number): ResearchInnovationEvaluation {
+  const candidate = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+  if (start < 0 || end <= start) throw new Error('INNOVATION_REVIEW_INVALID: expert did not return a JSON object')
+  let value: unknown
+  try {
+    value = JSON.parse(candidate.slice(start, end + 1)) as unknown
+  } catch (error) {
+    throw new Error('INNOVATION_REVIEW_INVALID: expert returned malformed JSON', { cause: error })
+  }
+  if (typeof value !== 'object' || value === null) throw new Error('INNOVATION_REVIEW_INVALID: expert result is not an object')
+  const record = value as Record<string, unknown>
+  const score = record.score
+  const overlap = record.overlap
+  const rationale = record.rationale
+  if (typeof score !== 'number' || !Number.isInteger(score) || score < 0 || score > 100 || typeof overlap !== 'boolean' || typeof rationale !== 'string') {
+    throw new Error('INNOVATION_REVIEW_INVALID: expected integer score, boolean overlap, and rationale')
+  }
+  return { score, threshold, overlap, rationale: rationale.trim() }
 }
 
 function unreachableStage(stage: never): never {

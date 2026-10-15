@@ -5,12 +5,14 @@ import {
   appendResearchOutput,
   confirmResearchNode,
   createAttachmentPaperReader,
+  createWebLiteratureSearcher,
   createResearchState,
   rejectIdea,
   ResearchCoordinator,
   type ResearchCoordinatorAdapters,
 } from '../src/index.ts'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { WebRuntime } from '@deepseek-ai/dsh-web'
 
 const parent = {} as Agent
 
@@ -39,6 +41,7 @@ function adapters(searchQueries: string[] = [], planWriter?: ResearchCoordinator
           case 'problem-extractor': return '研究缺口：分布偏移时检索器无法识别证据失效，需可测量的自适应机制。'
           case 'idea-generator': return '创新点：引入不确定性门控检索；方法是按证据一致性选择检索深度；基线为固定深度检索。'
           case 'idea-refiner': return '创新点：引入可校准的不确定性门控检索，并以跨域校准误差作为失败标准。'
+          case 'innovation-reviewer': return '{"score": 88, "overlap": false, "rationale": "候选方法与给定基线有明确机制差异。"}'
           default: return `${role}：通过；阻塞问题：补充跨域消融；修订：增加三个数据域。`
         }
       },
@@ -143,6 +146,73 @@ describe('ResearchCoordinator', () => {
     expect(node?.stage).toBe('idea-generation')
     expect(node?.status).toBe('awaiting-confirmation')
     expect(node?.memorySnapshot.artifactIds.some(id => state.artifacts[id]?.kind === 'literature')).toBe(true)
+  })
+
+  it('discards low-score or overlapping candidates before exposing a passing idea', async () => {
+    let reviewCount = 0
+    const base = adapters()
+    const coordinator = new ResearchCoordinator({
+      ...base,
+      innovation: { scoreThreshold: 70, maxAttempts: 3 },
+      agents: {
+        async run(role, prompt, owner, signal) {
+          if (role === 'innovation-reviewer') {
+            reviewCount += 1
+            return reviewCount === 1
+              ? '{"score": 92, "overlap": true, "rationale": "与基线方法高度重合。"}'
+              : '{"score": 84, "overlap": false, "rationale": "机制和验证标准均有清晰差异。"}'
+          }
+          return base.agents.run(role, prompt, owner, signal)
+        },
+      },
+    })
+    let state = createResearchState()
+    state = appendResearchOutput(state, { stage: 'problem-summary', kind: 'problem', title: '问题', content: '缺口' })
+    state = confirm(state)
+    state = appendResearchOutput(state, { stage: 'literature-search', kind: 'literature', title: '文献', content: '证据' })
+    state = confirm(state)
+    const result = await coordinator.advance({ state, parent })
+    expect(reviewCount).toBe(2)
+    expect(result.artifact?.evaluation).toMatchObject({ score: 84, overlap: false, threshold: 70 })
+  })
+
+  it('reports the innovation threshold when every candidate is rejected', async () => {
+    const base = adapters()
+    const coordinator = new ResearchCoordinator({
+      ...base,
+      innovation: { scoreThreshold: 90, maxAttempts: 2 },
+      agents: {
+        async run(role, prompt, owner, signal) {
+          if (role === 'innovation-reviewer') return '{"score": 40, "overlap": false, "rationale": "证据不足。"}'
+          return base.agents.run(role, prompt, owner, signal)
+        },
+      },
+    })
+    let state = createResearchState()
+    state = appendResearchOutput(state, { stage: 'problem-summary', kind: 'problem', title: '问题', content: '缺口' })
+    state = confirm(state)
+    state = appendResearchOutput(state, { stage: 'literature-search', kind: 'literature', title: '文献', content: '证据' })
+    state = confirm(state)
+    await expect(coordinator.advance({ state, parent })).rejects.toThrow('INNOVATION_SCORE_BELOW_THRESHOLD')
+  })
+})
+
+describe('createWebLiteratureSearcher', () => {
+  it('queries arXiv machine-learning categories and merges duplicate URLs', async () => {
+    const fetchedUrls: string[] = []
+    const xml = '<feed><entry><id>https://arxiv.org/abs/1234.5678</id><title> A ML paper </title><summary> A useful result </summary><published>2026-01-01T00:00:00Z</published></entry></feed>'
+    const web = Object.setPrototypeOf({
+      async search() { return { sources: [{ url: 'https://arxiv.org/abs/1234.5678', title: 'Duplicate' }], truncated: false } },
+      async fetch(request: { readonly url: string }) {
+        fetchedUrls.push(request.url)
+        return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content: xml } }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+    const searcher = createWebLiteratureSearcher(web, 4)
+    const sources = await searcher.search('transformer', undefined, { sources: ['arxiv'] })
+    expect(sources).toHaveLength(1)
+    expect(sources[0]).toMatchObject({ provider: 'arxiv', title: 'A ML paper', url: 'https://arxiv.org/abs/1234.5678' })
+    expect(fetchedUrls[0]).toContain('cat%3Acs.LG')
   })
 })
 

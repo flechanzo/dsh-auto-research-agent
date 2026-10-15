@@ -41,6 +41,8 @@ export {
   selectResearchNode,
   selectResearchBranch,
   setResearchReviewerRoles,
+  setResearchDirectionWeights,
+  setResearchLiteratureSources,
   selectedResearchNode,
 } from './research.ts'
 export type {
@@ -48,11 +50,18 @@ export type {
   ResearchBranch,
   ResearchDecision,
   ResearchMemorySnapshot,
+  ResearchDirectionWeights,
+  ResearchInnovationEvaluation,
+  ResearchLiteratureSourceId,
   ResearchNode,
   ResearchNodeStatus,
   ResearchOutputInput,
   ResearchStage,
   ResearchState,
+} from './research.ts'
+export {
+  DEFAULT_RESEARCH_DIRECTION_WEIGHTS,
+  DEFAULT_RESEARCH_LITERATURE_SOURCES,
 } from './research.ts'
 export {
   createAttachmentPaperReader,
@@ -70,6 +79,7 @@ export type {
   ResearchAgentRunner,
   ResearchCoordinatorAdapters,
   ResearchLiteratureSearcher,
+  ResearchLiteratureSearchOptions,
   ResearchLiteratureSource,
   ResearchPaperDocument,
   ResearchPaperExtractionMethod,
@@ -81,6 +91,7 @@ export type {
   ResearchPaperReaderOptions,
   ResearchPlanFile,
   ResearchPlanWriter,
+  ResearchInnovationPolicy,
   ResearchSimulationInput,
   ResearchSimulationRunner,
   HostResearchCoordinatorOptions,

@@ -11,6 +11,17 @@ export type ResearchStage =
   | 'idea-generation' | 'idea-refinement' | 'targeted-literature-search' | 'multi-agent-review'
   | 'simulation-or-final-plan' | 'final-plan'
 
+/** Literature backends available to the research workflow. */
+export type ResearchLiteratureSourceId = 'web' | 'arxiv'
+
+/** User-adjustable emphasis for idea generation and expert evaluation. */
+export interface ResearchDirectionWeights {
+  readonly novelty: number
+  readonly impact: number
+  readonly feasibility: number
+  readonly reproducibility: number
+}
+
 /** Lifecycle status of one research stage node. */
 export type ResearchNodeStatus =
   | 'pending' | 'active' | 'awaiting-confirmation' | 'confirmed' | 'rejected' | 'completed'
@@ -27,8 +38,18 @@ export interface ResearchArtifact {
   readonly content: string
   /** Optional paper filename or source URL. */
   readonly source?: string
+  /** Expert evaluation attached to an innovation candidate. */
+  readonly evaluation?: ResearchInnovationEvaluation
   /** Creation timestamp. */
   readonly createdAt: number
+}
+
+/** Score and overlap result returned by the isolated innovation expert. */
+export interface ResearchInnovationEvaluation {
+  readonly score: number
+  readonly threshold: number
+  readonly overlap: boolean
+  readonly rationale: string
 }
 
 /** Memory captured when a node is created. */
@@ -39,6 +60,8 @@ export interface ResearchMemorySnapshot {
   readonly feedback: readonly string[]
   /** Reviewer roles selected for the next review. */
   readonly reviewerRoles: readonly string[]
+  readonly directionWeights: ResearchDirectionWeights
+  readonly literatureSources: readonly ResearchLiteratureSourceId[]
 }
 
 /** Immutable stage node in the research conversation DAG. */
@@ -145,6 +168,10 @@ export interface ResearchConfirmRequest {
   readonly expectedRevision: number
   /** Stable reviewer role ids selected before the review step. */
   readonly reviewerRoles?: readonly string[]
+  /** Direction emphasis selected before idea generation. */
+  readonly directionWeights?: ResearchDirectionWeights
+  /** Literature backends selected before the first search. */
+  readonly literatureSources?: readonly ResearchLiteratureSourceId[]
   /** Required when confirming the simulation-or-plan checkpoint. */
   readonly finalChoice?: 'simulation' | 'plan'
 }

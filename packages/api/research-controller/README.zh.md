@@ -26,7 +26,7 @@ Host 控制器要求附件、Session 文件系统、Session controller、storage
 
 Client 用 `research.read({ sessionId })` 读取当前 revision。`research.upload` 保存上传的 `FileAttachmentRef`，读取论文并返回待确认的摘要 artifact；下一次 `research.confirm` 才会运行问题提炼。之后每次确认推进一个阶段；确认改进方向后会先执行一次针对性文献调研，再进入多智能体审查。`research.feedback` 保存人工反馈，`research.reject` 创建隔离的想法分支。`research.selectBranch` 和 `research.selectNode` 更改显示选择；`research.continueFromNode` 从历史节点创建新分支，`research.restore` 则按该节点记录的 Session 事件边界创建新 Session 分支并恢复其对话记忆。每个改变状态的请求都携带 `expectedRevision`；过期值会以 `research/stale` 失败，调用方必须读取返回状态后再重试。
 
-控制器把提供方工作交给 `createHostResearchCoordinator()`。协调器读取附件，使用 PDF.js 提取 PDF 文本层；扫描页面则渲染有上限的 PNG 图片并交给视觉 OCR subagent。随后通过 `ctx.web` 检索初始文献和确认方向后的针对性文献，委派摘要、想法生成、完善以及并行审查给配置的 subagent provider，并通过 `ctx.fs` 写入选定的最终方案。最终 artifact 同时保留 Markdown 内容和写入后的路径。仿真仍是显式的协调器适配器，在仿真或方案检查点通过 `research.confirm` 选择。
+控制器把提供方工作交给 `createHostResearchCoordinator()`。协调器读取附件，使用 PDF.js 提取 PDF 文本层；扫描页面则渲染有上限的 PNG 图片并交给视觉 OCR subagent。它可以合并通用 Web 检索和 arXiv 机器学习分类，按 URL 去重，并在确认方向后再次使用用户选择的来源检索。创新性、影响力、可行性和可复现性权重会写入想法提示词。每个生成或完善后的想法都会交给只接收候选和文献证据的新 `innovation-reviewer` 子 Agent；低分或与引用论文高度重合的候选会被丢弃并重试，通过的 artifact 会保留分数、阈值、重合结果和理由，供界面与最终方案使用。协调器随后把摘要、想法生成、完善以及并行审查委派给配置的 subagent provider，并通过 `ctx.fs` 写入选定的最终方案。最终 artifact 同时保留 Markdown 内容和写入后的路径。仿真仍是显式的协调器适配器，在仿真或方案检查点通过 `research.confirm` 选择。
 
 新节点记录产生其事件边界的源 Session；恢复后保留的后续节点仍可从源 Session 恢复。恢复会截取源 Session 的对话前缀，但复制完整的科研 sidecar，因此可以切换查看所有后续分支；要修改源 Session 中的后续节点，先再次恢复该节点，控制器会拒绝在错误 Session 上确认、反馈或拒绝。旧 sidecar 没有源 Session 标记时，恢复操作兼容地使用当前 Session。
 
@@ -38,6 +38,9 @@ Client 用 `research.read({ sessionId })` 读取当前 revision。`research.uplo
 | `planPath` | `research-plan.md` | Session 工作区内的相对输出路径 |
 | `maxPaperBytes` | `20,971,520` | 读入摘要提示词的论文最大字节数 |
 | `maxLiteratureResults` | `8` | 一个文献检索阶段包含的最大 Web 结果数 |
+| `literatureSources` | `['web', 'arxiv']` | 新研究默认使用的检索来源；arXiv 请求限定机器学习分类 |
+| `innovationScoreThreshold` | `70` | 想法展示给用户前必须达到的隔离专家最低分数 |
+| `maxIdeaAttempts` | `3` | 一个想法检查点最多生成的候选数量 |
 | `maxPdfPages` | `12` | OCR 检查或渲染的 PDF 最大页数 |
 | `ocrScale` | `1.5` | 应用像素上限前的初始栅格缩放比例 |
 | `maxOcrPixels` | `4,000,000` | 单个 OCR 页面渲染的最大宽 × 高像素数 |
@@ -61,6 +64,7 @@ Client 用 `research.read({ sessionId })` 读取当前 revision。`research.uplo
 - 科研状态只存在于配置的 storage backend 所在进程。要在 Host 重启后保留状态，部署必须使用持久化 backend。
 - 一个 Host service 实例会串行执行命令。水平扩展部署必须把同一 Session 的命令路由到一个所有者，或增加共享写入围栏。
 - 文献检索和 subagent 审查依赖配置的 Web 与 subagent provider；缺少它们时，推进命令会返回提供方错误。
+- arXiv 通过配置的 Web fetch provider 获取 Atom feed；启用 arXiv 的部署必须允许 Web 策略访问 `export.arxiv.org`，否则该检索阶段会失败。
 
 <a id="dev-note"></a>
 ### 开发备注

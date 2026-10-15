@@ -36,6 +36,29 @@ export type ResearchNodeStatus =
 /** Human decision recorded against a stage output. */
 export type ResearchDecision = 'confirm' | 'reject' | 'feedback'
 
+/** Search backends available to the research literature stages. */
+export type ResearchLiteratureSourceId = 'web' | 'arxiv'
+
+/** User-adjustable emphasis applied when agents propose and evaluate ideas. */
+export interface ResearchDirectionWeights {
+  /** Weight for novelty and separation from prior work. */
+  readonly novelty: number
+  /** Weight for expected research impact. */
+  readonly impact: number
+  /** Weight for implementation feasibility. */
+  readonly feasibility: number
+  /** Weight for reproducibility and evaluation clarity. */
+  readonly reproducibility: number
+}
+
+/** Default direction emphasis used before the user adjusts the sliders. */
+export const DEFAULT_RESEARCH_DIRECTION_WEIGHTS: ResearchDirectionWeights = {
+  novelty: 30, impact: 25, feasibility: 25, reproducibility: 20,
+}
+
+/** Default literature backends; arXiv is included for machine-learning coverage. */
+export const DEFAULT_RESEARCH_LITERATURE_SOURCES: readonly ResearchLiteratureSourceId[] = ['web', 'arxiv']
+
 /** The output a stage makes available to the user and later agents. */
 export interface ResearchArtifact {
   /** Stable artifact id within one research session. */
@@ -48,8 +71,22 @@ export interface ResearchArtifact {
   readonly content: string
   /** Optional paper filename or source URL. */
   readonly source?: string
+  /** Structured innovation evaluation, when this artifact is a scored idea. */
+  readonly evaluation?: ResearchInnovationEvaluation
   /** Stable creation time supplied by the coordinator. */
   readonly createdAt: number
+}
+
+/** Expert evaluation attached to an innovation candidate before user presentation. */
+export interface ResearchInnovationEvaluation {
+  /** Expert score in the inclusive 0–100 range. */
+  readonly score: number
+  /** Minimum score required before the candidate is shown to the user. */
+  readonly threshold: number
+  /** Whether the candidate substantially overlaps a cited prior paper. */
+  readonly overlap: boolean
+  /** Short expert rationale shown with the candidate. */
+  readonly rationale: string
 }
 
 /** Snapshot of the memory available when a node was created. */
@@ -60,6 +97,10 @@ export interface ResearchMemorySnapshot {
   readonly feedback: readonly string[]
   /** Selected expert roles for the next review. */
   readonly reviewerRoles: readonly string[]
+  /** Direction emphasis copied into downstream nodes. */
+  readonly directionWeights: ResearchDirectionWeights
+  /** Literature backends copied into downstream nodes. */
+  readonly literatureSources: readonly ResearchLiteratureSourceId[]
 }
 
 /** One immutable point in the conversation DAG. */
@@ -125,6 +166,7 @@ export interface ResearchOutputInput {
   readonly content: string
   readonly kind: ResearchArtifact['kind']
   readonly source?: string
+  readonly evaluation?: ResearchInnovationEvaluation
   readonly status?: ResearchNodeStatus
 }
 
@@ -141,7 +183,11 @@ export function createResearchState(now = 0): ResearchState {
     stage: 'paper-upload',
     status: 'active',
     artifactRefs: [],
-    memorySnapshot: { artifactIds: [], feedback: [], reviewerRoles: [] },
+    memorySnapshot: {
+      artifactIds: [], feedback: [], reviewerRoles: [],
+      directionWeights: { ...DEFAULT_RESEARCH_DIRECTION_WEIGHTS },
+      literatureSources: [...DEFAULT_RESEARCH_LITERATURE_SOURCES],
+    },
   }
   void now
   return {
@@ -186,6 +232,7 @@ export function appendResearchOutput(
     title: input.title,
     content: input.content,
     ...(input.source === undefined ? {} : { source: input.source }),
+    ...(input.evaluation === undefined ? {} : { evaluation: input.evaluation }),
     createdAt,
   }
   const node: ResearchNode = {
@@ -199,6 +246,8 @@ export function appendResearchOutput(
       artifactIds: [...parent.memorySnapshot.artifactIds, artifactId],
       feedback: parent.memorySnapshot.feedback,
       reviewerRoles: parent.memorySnapshot.reviewerRoles,
+      directionWeights: parent.memorySnapshot.directionWeights,
+      literatureSources: parent.memorySnapshot.literatureSources,
     },
   }
   const branch = state.branches[state.activeBranchId]
@@ -265,6 +314,47 @@ export function setResearchReviewerRoles(
   const updated: ResearchNode = {
     ...node,
     memorySnapshot: { ...node.memorySnapshot, reviewerRoles: [...roles] },
+  }
+  return { ...state, nodes: { ...state.nodes, [node.nodeId]: updated } }
+}
+
+/**
+ * Store user-selected direction emphasis on the current node.
+ * @param state - Current research state.
+ * @param directionWeights - Four bounded emphasis values.
+ * @returns The state with the selected node's emphasis updated.
+ */
+export function setResearchDirectionWeights(
+  state: ResearchState,
+  directionWeights: ResearchDirectionWeights,
+): ResearchState {
+  for (const [name, value] of Object.entries(directionWeights)) {
+    if (!Number.isSafeInteger(value) || value < 0 || value > 100) throw new Error(`research direction weight "${name}" must be an integer from 0 to 100`)
+  }
+  const node = selectedResearchNode(state)
+  const updated: ResearchNode = {
+    ...node,
+    memorySnapshot: { ...node.memorySnapshot, directionWeights: { ...directionWeights } },
+  }
+  return { ...state, nodes: { ...state.nodes, [node.nodeId]: updated } }
+}
+
+/**
+ * Store the literature backends selected for subsequent searches.
+ * @param state - Current research state.
+ * @param literatureSources - One or more supported backend ids.
+ * @returns The state with the selected node's backend selection updated.
+ */
+export function setResearchLiteratureSources(
+  state: ResearchState,
+  literatureSources: readonly ResearchLiteratureSourceId[],
+): ResearchState {
+  const sources = [...new Set(literatureSources)]
+  if (sources.length === 0) throw new Error('at least one research literature source is required')
+  const node = selectedResearchNode(state)
+  const updated: ResearchNode = {
+    ...node,
+    memorySnapshot: { ...node.memorySnapshot, literatureSources: sources },
   }
   return { ...state, nodes: { ...state.nodes, [node.nodeId]: updated } }
 }
@@ -354,7 +444,13 @@ export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
     status: 'active',
     artifactRefs: [],
     ...(reason.trim() === '' ? {} : { userNote: reason.trim() }),
-    memorySnapshot: { artifactIds: visibleArtifactIds, feedback: [], reviewerRoles: [] },
+    memorySnapshot: {
+      artifactIds: visibleArtifactIds,
+      feedback: [],
+      reviewerRoles: [],
+      directionWeights: { ...source.memorySnapshot.directionWeights },
+      literatureSources: [...source.memorySnapshot.literatureSources],
+    },
   }
   return {
     ...state,

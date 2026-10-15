@@ -11,16 +11,18 @@ Updated: 2026-10-15
 - Confirming the research direction now triggers a second targeted literature search that includes the confirmed idea and problem. The final plan remains visible as Markdown and is written to `research-plan.md` (or the configured Session workspace path).
 - Restoring a selected historical node forks a new Session at that node's event boundary while retaining the complete research DAG, later artifacts, and all idea branches, so the new Session can switch branches and continue a different revision.
 - Scanned and mixed PDFs now use PDF.js page extraction first, then bounded native-canvas rendering for missing or sparse pages and visual subagent OCR. The reader merges recovered OCR pages with embedded pages in source order, keeps page markers, reports the extraction method and page count, and fails with page-specific `PDF_OCR_*` errors when the visual route is unavailable or empty.
+- Literature searches now combine selectable Web and arXiv machine-learning sources, de-duplicate citations, and repeat the selected sources after direction confirmation. Direction weights for novelty, impact, feasibility, and reproducibility are captured in branch memory and included in idea prompts.
+- Generated and refined ideas now pass an isolated `innovation-reviewer` JSON evaluation. Candidates below the configured threshold or marked as overlapping cited work are discarded and retried; accepted artifacts expose the score, threshold, overlap result, and rationale in the UI.
 - Host and Client project references, generated Typert Remote artifacts, Web bundle rows, and the API Remote aggregation are wired and typechecked.
 - The new-session preset control is now visibly labeled `Agent`, and the Web bundle includes a selectable `Auto research agent` preset with the research workflow prompt and existing research tools.
 
 ## Current milestone
 
-- The current milestone is complete and paused after local DSH installation, Host build, Web startup smoke validation, and scanned-PDF/OCR integration.
+- The current milestone is complete and paused after local DSH installation, Host build, Web startup smoke validation, scanned-PDF/OCR integration, multi-source literature search, direction controls, and isolated innovation scoring.
 - The installed build exposes the workflow from the Session header's `自动科研流程` action and the right Sidebar.
 - On a new session, choose `Agent: 自动科研智能体` from the preset dropdown before sending the first message.
 - The Web profile loads `research-controller` successfully; paper upload, confirmation, feedback, branch, history, and plan commands are wired through the Session-scoped Remote.
-- Verification: the focused research workflow and UI suite (49 tests), Host/Client TypeScript checks, package bundles, `pnpm run test:docs` (20 gates), persistence checks, and Client UI locale checks pass; the repository build passed before the final UI condition adjustment, which is covered by the UI typecheck and tests.
+- Verification: the focused research coordinator and state suite (17 tests), Host/Client TypeScript checks, and the repository Host build pass. Documentation and full UI validation remain to be rerun for this checkpoint.
 - The aggregate hygiene run still reports the Windows NodeNext temporary-symlink privilege limitation and the pre-existing `apps/cli/tests/profiles/acp/cordis.yml` Loader-shape failure; neither is introduced by this milestone.
 
 ## Next work after confirmation

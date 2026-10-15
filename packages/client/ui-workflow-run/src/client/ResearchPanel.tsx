@@ -2,7 +2,15 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode 
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { IconBranchOutlineRegular, IconCheckOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
-  ResearchArtifact, ResearchCommandValue, ResearchNode, ResearchRemote, ResearchSnapshot, ResearchStage, ResearchState,
+  ResearchArtifact,
+  ResearchCommandValue,
+  ResearchDirectionWeights,
+  ResearchLiteratureSourceId,
+  ResearchNode,
+  ResearchRemote,
+  ResearchSnapshot,
+  ResearchStage,
+  ResearchState,
 } from '@deepseek-ai/dsh-api-research-controller/client'
 import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -27,6 +35,10 @@ const REVIEWER_ROLES = [
   { key: 'research.reviewer.novelty', role: 'novelty' },
   { key: 'research.reviewer.repro', role: 'reproducibility' },
 ] as const satisfies readonly { key: WorkflowRunKey; role: string }[]
+
+const DEFAULT_DIRECTION_WEIGHTS: ResearchDirectionWeights = {
+  novelty: 30, impact: 25, feasibility: 25, reproducibility: 20,
+}
 
 const STAGE_KEYS = {
   'paper-upload': 'research.paper-upload',
@@ -60,7 +72,10 @@ function statusText(status: ReturnType<typeof selectedResearchNode>['status'], t
 function initialResearchState(label: string): ResearchState {
   const node: ResearchNode = {
     nodeId: 'node-1', branchId: 'branch-1', stage: 'paper-upload', status: 'active', artifactRefs: [],
-    memorySnapshot: { artifactIds: [], feedback: [], reviewerRoles: [] },
+    memorySnapshot: {
+      artifactIds: [], feedback: [], reviewerRoles: [],
+      directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['web', 'arxiv'],
+    },
   }
   return {
     nodes: { [node.nodeId]: node },
@@ -101,6 +116,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
   const [error, setError] = useState<string>()
   const [feedback, setFeedback] = useState('')
   const [choice, setChoice] = useState<'simulation' | 'plan'>('plan')
+  const [directionWeights, setDirectionWeights] = useState<ResearchDirectionWeights>(DEFAULT_DIRECTION_WEIGHTS)
+  const [literatureSources, setLiteratureSources] = useState<readonly ResearchLiteratureSourceId[]>(['web', 'arxiv'])
   const [reviewers, setReviewers] = useState<readonly string[]>(REVIEWER_ROLES.map(item => item.role))
   const inputRef = useRef<HTMLInputElement>(null)
   const displayState = state ?? initialResearchState(t('research.defaultBranch'))
@@ -150,6 +167,11 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
       : REVIEWER_ROLES.map(item => item.role))
   }, [selected.nodeId, selected.memorySnapshot.reviewerRoles])
 
+  useEffect(() => {
+    setDirectionWeights(selected.memorySnapshot.directionWeights ?? DEFAULT_DIRECTION_WEIGHTS)
+    setLiteratureSources(selected.memorySnapshot.literatureSources ?? ['web', 'arxiv'])
+  }, [selected.nodeId, selected.memorySnapshot.directionWeights, selected.memorySnapshot.literatureSources])
+
   const execute = async (operation: () => Promise<RemoteResult<ResearchCommandValue>>): Promise<ResearchCommandValue | undefined> => {
     if (busy) return undefined
     setBusy(true)
@@ -191,6 +213,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
     void execute(() => research.confirm({
       sessionId, expectedRevision: revision,
       ...(selected.stage === 'targeted-literature-search' ? { reviewerRoles: reviewers } : {}),
+      ...(selected.stage === 'problem-summary' ? { directionWeights, literatureSources } : {}),
       ...(selected.stage === 'simulation-or-final-plan' ? { finalChoice: choice } : {}),
     }, tab.signal))
   }
@@ -274,10 +297,48 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
       <div className={css.card}>
         <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
         <pre className={css.content}>{artifact?.content || t('research.emptyArtifact')}</pre>
+        {artifact?.evaluation !== undefined && (
+          <div className={artifact.evaluation.overlap || artifact.evaluation.score < artifact.evaluation.threshold
+            ? css.notice
+            : css.successNotice}>
+            {t('research.evaluation', { score: artifact.evaluation.score, threshold: artifact.evaluation.threshold })}
+            {' '}{artifact.evaluation.overlap ? t('research.overlap') : t('research.noOverlap')}
+            <div>{artifact.evaluation.rationale}</div>
+          </div>
+        )}
         {artifact?.kind === 'plan' && artifact.source !== undefined && (
           <div className={css.successNotice}>{t('research.planWritten', { path: artifact.source })}</div>
         )}
         {error !== undefined && <div className={css.notice} role="alert">{error}</div>}
+        {canMutate && selected.stage === 'problem-summary' && (
+          <div className={css.directionControls}>
+            <div className={css.subtle}>{t('research.directionTitle')}</div>
+            {([
+              ['novelty', 'research.direction.novelty'],
+              ['impact', 'research.direction.impact'],
+              ['feasibility', 'research.direction.feasibility'],
+              ['reproducibility', 'research.direction.reproducibility'],
+            ] as const).map(([key, labelKey]) => (
+              <label key={key} className={css.weightRow}>
+                <span>{t(labelKey)}</span>
+                <input type="range" min="0" max="100" step="1" value={directionWeights[key]} aria-label={t(labelKey)} onChange={(event) => { setDirectionWeights(current => ({ ...current, [key]: Number(event.target.value) })) }} />
+                <output>{directionWeights[key]}</output>
+              </label>
+            ))}
+            <div className={css.subtle}>{t('research.literatureSources')}</div>
+            <div className={css.reviewerRow}>
+              {([
+                ['web', 'research.source.web'],
+                ['arxiv', 'research.source.arxiv'],
+              ] as const).map(([source, labelKey]) => (
+                <label key={source} className={css.reviewer}>
+                  <input type="checkbox" checked={literatureSources.includes(source)} onChange={(event) => { setLiteratureSources(current => event.target.checked ? [...new Set([...current, source])] : current.filter(item => item !== source)) }} />
+                  {t(labelKey)}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         {selected.stage === 'paper-upload' && (
           <>
             <input ref={inputRef} className={css.fileInput} type="file" accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />

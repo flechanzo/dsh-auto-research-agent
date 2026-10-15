@@ -16,12 +16,15 @@ import {
   selectResearchBranch,
   selectResearchNode,
   setResearchReviewerRoles,
+  setResearchDirectionWeights,
+  setResearchLiteratureSources,
   markResearchSessionBoundary,
   researchSourceSessionId,
 } from '@deepseek-ai/dsh-workflow'
 import type {
   ResearchArtifact,
   ResearchBranch,
+  ResearchLiteratureSourceId,
   ResearchMemorySnapshot,
   ResearchNode,
   ResearchState,
@@ -70,9 +73,21 @@ const researchStage = zod.enum([
 ])
 const researchStatus = zod.enum(['pending', 'active', 'awaiting-confirmation', 'confirmed', 'rejected', 'completed'])
 const researchKind = zod.enum(['paper', 'summary', 'problem', 'literature', 'idea', 'review', 'simulation', 'plan', 'decision'])
+const researchLiteratureSource = zod.enum(['web', 'arxiv'])
+const researchLiteratureSourceConfig = z.union(['web', 'arxiv'] as const)
+const researchDirectionWeights = zod.object({
+  novelty: zod.number().int().min(0).max(100),
+  impact: zod.number().int().min(0).max(100),
+  feasibility: zod.number().int().min(0).max(100),
+  reproducibility: zod.number().int().min(0).max(100),
+})
+const researchInnovationEvaluation = zod.object({
+  score: zod.number().min(0).max(100), threshold: zod.number().min(0).max(100),
+  overlap: zod.boolean(), rationale: zod.string(),
+})
 const researchArtifactInput = zod.object({
   artifactId: zod.string(), kind: researchKind, title: zod.string(), content: zod.string(),
-  source: zod.string().optional(), createdAt: zod.number(),
+  source: zod.string().optional(), evaluation: researchInnovationEvaluation.optional(), createdAt: zod.number(),
 })
 const researchArtifact = researchArtifactInput.transform((artifact): ResearchArtifact => ({
   artifactId: artifact.artifactId,
@@ -80,15 +95,19 @@ const researchArtifact = researchArtifactInput.transform((artifact): ResearchArt
   title: artifact.title,
   content: artifact.content,
   ...(artifact.source === undefined ? {} : { source: artifact.source }),
+  ...(artifact.evaluation === undefined ? {} : { evaluation: artifact.evaluation }),
   createdAt: artifact.createdAt,
 }))
 const researchMemoryInput = zod.object({
   artifactIds: zod.array(zod.string()), feedback: zod.array(zod.string()), reviewerRoles: zod.array(zod.string()),
+  directionWeights: researchDirectionWeights.optional(), literatureSources: zod.array(researchLiteratureSource).optional(),
 })
 const researchMemory = researchMemoryInput.transform((memory): ResearchMemorySnapshot => ({
   artifactIds: memory.artifactIds,
   feedback: memory.feedback,
   reviewerRoles: memory.reviewerRoles,
+  directionWeights: memory.directionWeights ?? { novelty: 30, impact: 25, feasibility: 25, reproducibility: 20 },
+  literatureSources: memory.literatureSources ?? ['web', 'arxiv'],
 }))
 const researchNodeInput = zod.object({
   nodeId: zod.string(), parentNodeId: zod.string().optional(), branchId: zod.string(),
@@ -160,6 +179,12 @@ export interface Config {
   readonly maxPaperBytes?: number
   /** Maximum Web sources included in one literature step. */
   readonly maxLiteratureResults?: number
+  /** Literature backends enabled by default for new research Sessions. */
+  readonly literatureSources?: ResearchLiteratureSourceId[]
+  /** Minimum isolated expert score required before an idea is shown. */
+  readonly innovationScoreThreshold?: number
+  /** Maximum fresh candidates tried before reporting that all were rejected. */
+  readonly maxIdeaAttempts?: number
   /** Maximum PDF pages inspected and rendered for OCR. */
   readonly maxPdfPages?: number
   /** Initial PDF rendering scale before pixel capping. */
@@ -179,6 +204,9 @@ export class ResearchController extends TypertRemoteService {
     planPath: z.string().default('research-plan.md'),
     maxPaperBytes: z.natural().min(1).default(20 * 1024 * 1024),
     maxLiteratureResults: z.natural().min(1).max(50).default(8),
+    literatureSources: z.array(researchLiteratureSourceConfig).min(1).default(['web', 'arxiv']),
+    innovationScoreThreshold: z.natural().max(100).default(70),
+    maxIdeaAttempts: z.natural().min(1).max(10).default(3),
     maxPdfPages: z.number().step(1).min(1).max(100).default(12),
     ocrScale: z.number().min(0.25).max(4).default(1.5),
     maxOcrPixels: z.number().step(1).min(1).max(16_000_000).default(4_000_000),
@@ -234,6 +262,8 @@ export class ResearchController extends TypertRemoteService {
     return this.serialize(() => this.advance(request.sessionId, request.expectedRevision, signal, (state) => {
       let next = state
       if (request.reviewerRoles !== undefined) next = setResearchReviewerRoles(next, request.reviewerRoles)
+      if (request.directionWeights !== undefined) next = setResearchDirectionWeights(next, request.directionWeights)
+      if (request.literatureSources !== undefined) next = setResearchLiteratureSources(next, request.literatureSources)
       const confirmed = confirmResearchNode(next)
       return request.finalChoice === undefined
         ? { state: confirmed }
@@ -368,6 +398,8 @@ export class ResearchController extends TypertRemoteService {
       maxPdfPages: this.config.maxPdfPages,
       ocrScale: this.config.ocrScale,
       maxOcrPixels: this.config.maxOcrPixels,
+      innovationScoreThreshold: this.config.innovationScoreThreshold,
+      maxIdeaAttempts: this.config.maxIdeaAttempts,
     })
     const result: ResearchAdvanceResult = await coordinator.advance({
       state: prepared.state,
@@ -434,9 +466,10 @@ export class ResearchController extends TypertRemoteService {
   }
 
   private snapshot(sessionId: SessionId, record: ResearchRecord | undefined): ResearchSnapshot {
-    return record === undefined
-      ? { sessionId, revision: 0, state: createResearchState(Date.now()) }
-      : { sessionId, revision: record.revision, state: record.state }
+    if (record !== undefined) return { sessionId, revision: record.revision, state: record.state }
+    const initial = createResearchState(Date.now())
+    const state = setResearchLiteratureSources(initial, this.config.literatureSources)
+    return { sessionId, revision: 0, state }
   }
 
   private serialize<T>(work: () => Promise<T>): Promise<T> {

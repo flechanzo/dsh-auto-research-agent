@@ -183,6 +183,29 @@
   padding: 7px;
 }
 
+.directionControls {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid var(--dsw-alias-line-tertiary);
+  border-radius: var(--dsw-radius-sm);
+}
+
+.weightRow {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(90px, 2fr) 28px;
+  align-items: center;
+  gap: 7px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.weightRow output {
+  text-align: right;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .reviewerRow {
   flex-wrap: wrap;
 }

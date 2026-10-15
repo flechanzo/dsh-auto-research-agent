@@ -5,8 +5,12 @@
  * a Host package across the client bundle purity seam.
  */
 import type {
-  ResearchArtifact, ResearchNode, ResearchOutputInput, ResearchState,
+  ResearchArtifact, ResearchDirectionWeights, ResearchNode, ResearchOutputInput, ResearchState,
 } from '@deepseek-ai/dsh-workflow'
+
+const DEFAULT_DIRECTION_WEIGHTS: ResearchDirectionWeights = {
+  novelty: 30, impact: 25, feasibility: 25, reproducibility: 20,
+}
 
 /** Create the first paper-upload node for one browser tab.
  * @returns A new browser research state.
@@ -14,7 +18,10 @@ import type {
 export function createResearchState(): ResearchState {
   const root: ResearchNode = {
     nodeId: 'node-1', branchId: 'branch-1', stage: 'paper-upload', status: 'active', artifactRefs: [],
-    memorySnapshot: { artifactIds: [], feedback: [], reviewerRoles: [] },
+    memorySnapshot: {
+      artifactIds: [], feedback: [], reviewerRoles: [],
+      directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['web', 'arxiv'],
+    },
   }
   return {
     nodes: { 'node-1': root },
@@ -47,6 +54,7 @@ export function appendResearchOutput(state: ResearchState, input: ResearchOutput
   const artifact: ResearchArtifact = {
     artifactId, kind: input.kind, title: input.title, content: input.content, createdAt,
     ...(input.source === undefined ? {} : { source: input.source }),
+    ...(input.evaluation === undefined ? {} : { evaluation: input.evaluation }),
   }
   const branch = state.branches[state.activeBranchId]
   if (branch === undefined) throw new Error(`research branch "${state.activeBranchId}" is missing`)
