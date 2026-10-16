@@ -224,7 +224,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-research-controller`
 
 - `inject`: `attachments` · `fs` · `sessionController` · `storageDomain` · `subagents` · `typert` · `web`
-- `source`: [`packages/api/research-controller/src/index.ts:154`](../packages/api/research-controller/src/index.ts)
+- `source`: [`packages/api/research-controller/src/index.ts:177`](../packages/api/research-controller/src/index.ts)
 
 ```ts config-catalog
 /** Host limits and provider selection for automatic research. */
@@ -237,6 +237,12 @@ export interface Config {
   readonly maxPaperBytes?: number
   /** Maximum Web sources included in one literature step. */
   readonly maxLiteratureResults?: number
+  /** Literature backends enabled by default for new research Sessions. */
+  readonly literatureSources?: ResearchLiteratureSourceId[]
+  /** Minimum isolated expert score required before an idea is shown. */
+  readonly innovationScoreThreshold?: number
+  /** Maximum fresh candidates tried before reporting that all were rejected. */
+  readonly maxIdeaAttempts?: number
   /** Maximum PDF pages inspected and rendered for OCR. */
   readonly maxPdfPages?: number
   /** Initial PDF rendering scale before pixel capping. */
@@ -244,6 +250,9 @@ export interface Config {
   /** Maximum width × height for one rendered OCR page. */
   readonly maxOcrPixels?: number
 }
+
+/** Literature backends available to the research workflow. */
+export type ResearchLiteratureSourceId = 'web' | 'arxiv'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-research-controller -->
 
@@ -3573,7 +3582,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-goal`
 
 - `inject`: `agents` · `goals` · `tools` · `systemPrompt` · `sessionProjections`
-- `source`: [`packages/goal/tool-goal/src/index.ts:32`](../packages/goal/tool-goal/src/index.ts)
+- `source`: [`packages/goal/tool-goal/src/index.ts:33`](../packages/goal/tool-goal/src/index.ts)
 
 ```ts config-catalog
 /** Model policy and hard lower bounds for goal-state updates. */

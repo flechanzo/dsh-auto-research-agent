@@ -346,6 +346,9 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         {artifact?.kind === 'plan' && artifact.source !== undefined && (
           <div className={css.successNotice}>{t('research.planWritten', { path: artifact.source })}</div>
         )}
+        {artifact?.kind === 'plan' && artifact.source === undefined && (
+          <div className={css.notice}>{t('research.planPreview')}</div>
+        )}
         {error !== undefined && <div className={css.notice} role="alert">{error}</div>}
         {canMutate && selected.stage === 'problem-summary' && (
           <div className={css.directionControls}>
@@ -411,7 +414,9 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         {canMutate && ((selected.status === 'awaiting-confirmation' || selected.status === 'confirmed')
           || (selected.status === 'active' && selected.stage !== 'paper-upload')) && (
           <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={confirm}>
-            <IconCheckOutlineRegular size={14} /> {t('research.confirm')}
+            <IconCheckOutlineRegular size={14} /> {selected.stage === 'final-plan' && artifact?.kind === 'plan' && artifact.source === undefined
+              ? t('research.writePlan')
+              : t('research.confirm')}
           </button>
         )}
         {canMutate && ideaNeedsReview && (
@@ -464,7 +469,11 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       {finalPlanArtifact !== undefined && (
         <section className={css.finalPlan} aria-label={t('research.finalPlanOutput')}>
           <div className={css.cardTitle}>{t('research.finalPlanOutput')}</div>
-          <div className={css.successNotice}>{t('research.planWritten', { path: finalPlanArtifact.source ?? 'research-plan.md' })}</div>
+          <div className={finalPlanArtifact.source === undefined ? css.notice : css.successNotice}>
+            {finalPlanArtifact.source === undefined
+              ? t('research.planPreview')
+              : t('research.planWritten', { path: finalPlanArtifact.source })}
+          </div>
           <pre className={css.content}>{finalPlanArtifact.content}</pre>
         </section>
       )}

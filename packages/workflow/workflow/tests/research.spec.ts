@@ -7,6 +7,7 @@ import {
   confirmResearchNode,
   continueFromResearchNode,
   createResearchState,
+  markResearchPlanWritten,
   markResearchSessionBoundary,
   researchSourceSessionId,
   rejectIdea,
@@ -33,6 +34,24 @@ describe('research workflow state', () => {
     expect(state.nodes[state.selectedNodeId]?.status).toBe('awaiting-confirmation')
     state = confirmResearchNode(state)
     expect(state.nodes[state.selectedNodeId]?.userDecision).toBe('confirm')
+  })
+
+  it('marks the displayed final plan as written only after a valid path is returned', () => {
+    let state = appendResearchOutput(createResearchState(), {
+      stage: 'final-plan', kind: 'plan', title: '方案预览', content: '# 方案',
+    })
+    expect(() => markResearchPlanWritten(state, '  ')).toThrow('file name')
+    expect(() => markResearchPlanWritten(createResearchState(), 'research-plan.md')).toThrow('plan artifact')
+    state = appendResearchOutput(createResearchState(), {
+      stage: 'paper-read', kind: 'summary', title: '摘要', content: '内容',
+    })
+    expect(() => markResearchPlanWritten(state, 'research-plan.md')).toThrow('plan artifact')
+    state = appendResearchOutput(createResearchState(), {
+      stage: 'final-plan', kind: 'plan', title: '方案预览', content: '# 方案',
+    })
+    const written = markResearchPlanWritten(state, ' workspace/research-plan.md ')
+    expect(written.artifacts[written.nodes[written.selectedNodeId]?.artifactRefs[0] ?? '']?.source).toBe('workspace/research-plan.md')
+    expect(markResearchPlanWritten(written, 'workspace/research-plan.md')).toBe(written)
   })
 
   it('stores at least one selected research focus in branch memory', () => {

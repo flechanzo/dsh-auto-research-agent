@@ -138,12 +138,20 @@ describe('ResearchCoordinator', () => {
     state = (await coordinator.advance({ state, parent })).state
     expect(state.nodes[state.selectedNodeId]?.stage).toBe('simulation-or-final-plan')
     state = confirm(state)
-    const final = await coordinator.advance({ state, parent, finalChoice: 'plan' })
+    const preview = await coordinator.advance({ state, parent, finalChoice: 'plan' })
+    expect(preview.planFile).toBeUndefined()
+    expect(preview.artifact?.title).toBe('完整科研方案（待写入）')
+    expect(preview.artifact?.content).toContain('# 自动科研方案')
+    expect(preview.state.nodes[preview.state.selectedNodeId]?.status).toBe('awaiting-confirmation')
+    expect(written).toHaveLength(0)
+    const final = await coordinator.advance({ state: confirm(preview.state), parent })
     expect(final.planFile?.fileName).toBe('workspace/research-plan.md')
     expect(final.planFile?.content).toContain('# 自动科研方案')
     expect(written).toHaveLength(1)
     expect(written[0]).toBe(final.planFile?.content)
+    expect(final.artifact?.source).toBe('workspace/research-plan.md')
     expect(final.state.nodes[final.state.selectedNodeId]?.stage).toBe('final-plan')
+    expect(final.state.nodes[final.state.selectedNodeId]?.status).toBe('completed')
   })
 
   it('refuses to run a stage whose output is still awaiting confirmation', async () => {

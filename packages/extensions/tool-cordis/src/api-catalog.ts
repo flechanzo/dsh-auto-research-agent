@@ -6196,7 +6196,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchConfirmRequest',
-    declaration: 'export interface ResearchConfirmRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly reviewerRoles?: readonly string[];\n    readonly finalChoice?: \'simulation\' | \'plan\';\n}',
+    declaration: 'export interface ResearchConfirmRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly reviewerRoles?: readonly string[];\n    readonly directionWeights?: ResearchDirectionWeights;\n    readonly directionFocuses?: readonly ResearchDirectionFocusId[];\n    readonly literatureSources?: readonly ResearchLiteratureSourceId[];\n    readonly finalChoice?: \'simulation\' | \'plan\';\n}',
   },
   {
     name: 'ResearchContinueRequest',
@@ -6232,7 +6232,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchUploadRequest',
-    declaration: 'export interface ResearchUploadRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly paper: FileAttachmentRef;\n}',
+    declaration: 'export interface ResearchUploadRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly paper?: FileAttachmentRef;\n    readonly papers?: readonly FileAttachmentRef[];\n}',
   },
   {
     name: 'ResolvedAlwaysRetryPolicy',

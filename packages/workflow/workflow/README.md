@@ -60,7 +60,7 @@ A script that does not parse, a malformed meta block, an unavailable provider ro
 
 ### Human-confirmed research runs
 
-`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads one or more durable `FileAttachmentRef` values, extracts normal text or renders at most the configured number of PDF pages for OCR, searches through `ctx.web` for the initial problem and approved direction, applies the selected direction focus areas, runs named subagent roles, writes the final Markdown file through `ctx.fs`, and leaves simulation as an explicit optional adapter. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
+`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads one or more durable `FileAttachmentRef` values, extracts normal text or renders at most the configured number of PDF pages for OCR, searches through `ctx.web` for the initial problem and approved direction, applies the selected direction focus areas, runs named subagent roles, returns the final Markdown as an awaiting-confirmation preview, and writes it through `ctx.fs` only after that preview is confirmed. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
 
 -----
 

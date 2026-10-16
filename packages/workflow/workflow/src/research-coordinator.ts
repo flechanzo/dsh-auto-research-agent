@@ -23,6 +23,7 @@ import {
   appendResearchOutput,
   assertInnovationClaim,
   completeResearchNode,
+  markResearchPlanWritten,
   selectedResearchNode,
   setResearchReviewerRoles,
   type ResearchArtifact,
@@ -308,7 +309,8 @@ export class ResearchCoordinator {
         this.requireConfirmed(node.stage, node.status)
         return this.chooseSimulationOrPlan(request)
       case 'final-plan':
-        return { state: completeResearchNode(state) }
+        this.requireConfirmed(node.stage, node.status)
+        return this.writeFinalPlan(request)
       default:
         return unreachableStage(node.stage)
     }
@@ -540,10 +542,18 @@ export class ResearchCoordinator {
       .filter((artifact): artifact is ResearchArtifact => artifact !== undefined)
     const content = renderResearchPlan(artifacts)
     const file = { fileName: 'research-plan.md', content }
-    const planFile = this.adapters.planWriter === undefined ? file : await this.adapters.planWriter.write(file)
     const state = appendResearchOutput(request.state, {
-      stage: 'final-plan', kind: 'plan', title: '完整科研方案', content: planFile.content, source: planFile.fileName,
+      stage: 'final-plan', kind: 'plan', title: '完整科研方案（待写入）', content: file.content,
     }, Date.now())
+    return this.withLatestArtifact(state)
+  }
+
+  private async writeFinalPlan(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
+    const plan = this.latestArtifact(request.state, 'plan')
+    const file = { fileName: plan.source ?? 'research-plan.md', content: plan.content }
+    const planFile = this.adapters.planWriter === undefined ? file : await this.adapters.planWriter.write(file)
+    const written = markResearchPlanWritten(request.state, planFile.fileName)
+    const state = completeResearchNode(written)
     return { ...(this.withLatestArtifact(state)), planFile }
   }
 

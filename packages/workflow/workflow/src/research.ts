@@ -431,6 +431,31 @@ export function completeResearchNode(state: ResearchState): ResearchState {
 }
 
 /**
+ * Attach the persisted path to the selected final-plan artifact.
+ * @param state - Research state whose final plan was written.
+ * @param fileName - Workspace-relative path returned by the writer.
+ * @returns The state with the plan artifact marked as persisted.
+ */
+export function markResearchPlanWritten(state: ResearchState, fileName: string): ResearchState {
+  const trimmed = fileName.trim()
+  if (trimmed === '') throw new Error('research plan file name must not be empty')
+  const node = selectedResearchNode(state)
+  const artifactId = node.artifactRefs.at(-1)
+  const artifact = artifactId === undefined ? undefined : state.artifacts[artifactId]
+  if (artifact === undefined || artifact.kind !== 'plan') {
+    throw new Error('research plan artifact is required before it can be written')
+  }
+  if (artifact.source === trimmed) return state
+  return {
+    ...state,
+    artifacts: {
+      ...state.artifacts,
+      [artifact.artifactId]: { ...artifact, source: trimmed },
+    },
+  }
+}
+
+/**
  * Attach the durable Session boundary reached after a stage operation.
  * @param state - Current research state.
  * @param sessionSeq - Inclusive event sequence reached by the operation.

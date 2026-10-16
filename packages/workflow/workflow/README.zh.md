@@ -60,7 +60,7 @@ return { reviewed: reviews.length }
 
 ### 人工确认式科研运行
 
-`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取一个或多个持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 `ctx.web` 做初始和针对性检索，应用用户选择的研究方向侧重，运行命名的 subagent 角色，通过 `ctx.fs` 写入最终 Markdown 文件，并把仿真保留为显式可选适配器。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
+`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取一个或多个持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 `ctx.web` 做初始和针对性检索，应用用户选择的研究方向侧重，运行命名的 subagent 角色，先返回等待确认的最终 Markdown 预览，确认后才通过 `ctx.fs` 写入文件，并把仿真保留为显式可选适配器。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
 
 -----
 
