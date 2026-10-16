@@ -646,29 +646,7 @@ export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number)
       const sources = options?.sources === undefined || options.sources.length === 0 ? ['web', 'arxiv'] as const : options.sources
       const limit = options?.maxResults ?? maxResults
       const collected: ResearchLiteratureSource[] = []
-      if (sources.includes('web')) {
-        const result = await web.search({ query, maxResults: limit }, signal)
-        const webSources = result.sources.map((source: WebSearchSource) => ({
-          url: source.url,
-          provider: 'web' as const,
-          ...source.title === undefined ? {} : { title: source.title },
-          ...source.snippet === undefined ? {} : { snippet: source.snippet },
-          ...source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt },
-        }))
-        const enriched = await Promise.all(webSources.map(async (source) => {
-          signal?.throwIfAborted()
-          if (source.snippet !== undefined) return source
-          try {
-            const fetched = await web.fetch({ url: source.url }, signal)
-            const snippet = fetched.body.content.slice(0, 1200)
-            return snippet.length === 0 ? source : { ...source, snippet }
-          } catch {
-            signal?.throwIfAborted()
-            return source
-          }
-        }))
-        collected.push(...enriched)
-      }
+      if (sources.includes('web')) collected.push(...await searchWeb(web, query, signal, limit))
       if (sources.includes('arxiv')) collected.push(...await searchArxiv(web, query, signal, limit))
       const seen = new Set<string>()
       return collected.filter((source) => {
@@ -678,6 +656,41 @@ export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number)
       }).slice(0, limit)
     },
   }
+}
+
+/** Search the general Web backend without making one unavailable backend abort the workflow. */
+async function searchWeb(
+  web: WebRuntime,
+  query: string,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<readonly ResearchLiteratureSource[]> {
+  let result: Awaited<ReturnType<WebRuntime['search']>>
+  try {
+    result = await web.search({ query, maxResults }, signal)
+  } catch {
+    signal?.throwIfAborted()
+    return []
+  }
+  const webSources = result.sources.map((source: WebSearchSource) => ({
+    url: source.url,
+    provider: 'web' as const,
+    ...source.title === undefined ? {} : { title: source.title },
+    ...source.snippet === undefined ? {} : { snippet: source.snippet },
+    ...source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt },
+  }))
+  return Promise.all(webSources.map(async (source) => {
+    signal?.throwIfAborted()
+    if (source.snippet !== undefined) return source
+    try {
+      const fetched = await web.fetch({ url: source.url }, signal)
+      const snippet = fetched.body.content.slice(0, 1200)
+      return snippet.length === 0 ? source : { ...source, snippet }
+    } catch {
+      signal?.throwIfAborted()
+      return source
+    }
+  }))
 }
 
 async function searchArxiv(

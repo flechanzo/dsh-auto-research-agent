@@ -63,7 +63,7 @@ dsh --profile web --no-open --port 8080
 
 ### 按会话的 agent 设置
 
-每个浏览器会话选择一个随发行版交付的 preset（默认 `standard`）。新会话选择器包含面向论文科研任务的“自动科研智能体”，Agent 预设设置页可更改默认项并编辑预设的子插件；保存结果持久化到 `$DSH_HOME/profiles/web/cordis.patch.yml`。只有 Host 提供可编辑的 profile 时，Creator 的插件管理工具才会启用。
+每个浏览器会话选择一个随发行版交付的 preset（默认 `standard`）。新会话选择器包含面向论文科研任务的“自动科研智能体”，Agent 预设设置页可更改默认项并编辑预设的子插件；保存结果持久化到 `$DSH_HOME/profiles/web/cordis.patch.yml`。科研 preset 让子 Agent 同步返回结果，继承父 Session 的精确模型路由，并隐藏子 Agent 的路由覆盖项，避免科研流程静默降级模型。只有 Host 提供可编辑的 profile 时，Creator 的插件管理工具才会启用。
 
 -----
 

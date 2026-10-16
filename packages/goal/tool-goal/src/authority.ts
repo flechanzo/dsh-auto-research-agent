@@ -135,17 +135,29 @@ export function completionAuthority(ctx: Context, execution: GoalToolExecution):
  * @returns A user/model-facing reason when completion must be rejected.
  */
 export function completionBlockReason(ctx: Context, execution: GoalToolExecution): string | undefined {
-  const calls = new Map<string, string>()
+  const calls = new Map<string, { readonly name: string }>()
+  const failed = new Map<string, number>()
+  const resolved = new Set<string>()
   for (let seq = execution.openTurnStartSeq + 1; seq < execution.events.length; seq += 1) {
     const event = execution.events[seq]
     if (event === undefined) continue
     if (event.type === 'tool/call') {
-      calls.set(event.data.callId, event.data.name)
+      calls.set(event.data.callId, { name: event.data.name })
       continue
     }
-    if (event.type !== 'tool/result' || event.data.message.isError !== true) continue
-    const name = calls.get(event.data.message.toolCallId)
-    if (name !== undefined && !GOAL_CONTROL_TOOLS.has(name)) {
+    if (event.type !== 'tool/result') continue
+    const call = calls.get(event.data.message.toolCallId)
+    if (call === undefined || GOAL_CONTROL_TOOLS.has(call.name)) continue
+    if (event.data.message.isError === true) {
+      failed.set(call.name, event.seq)
+      resolved.delete(call.name)
+    } else {
+      const failureSeq = failed.get(call.name)
+      if (failureSeq !== undefined && event.seq > failureSeq) resolved.add(call.name)
+    }
+  }
+  for (const [name] of failed) {
+    if (!resolved.has(name)) {
       return `tool "${name}" failed in this round; resolve or retry it before marking the goal complete`
     }
   }

@@ -654,6 +654,42 @@ describe('goal tool state transitions', () => {
     expect(ctx.goals.get(root.agent)).toMatchObject({ phase: 'active', roundsStarted: 1 })
   })
 
+  it('allows an autonomous goal to complete after a failed tool is retried successfully', async () => {
+    const { ctx, root } = await harness()
+    const humanTurn = openTurn(root, { kind: 'user' })
+    const created = ctx.goals.create(root.agent, { objective: 'verify retried evidence' })
+    closeTurn(root, humanTurn)
+
+    const goalTurn = openTurn(root, { kind: 'goal', goalId: created.id, revision: created.revision, round: 1 })
+    const failedCallId = ToolCallId('goal-tool-failed-then-retried')
+    root.session.append('step/start', { turn: goalTurn, step: 1 })
+    root.session.append('tool/call', { turn: goalTurn, step: 1, callId: failedCallId, name: 'web_fetch', arguments: '{}' })
+    root.session.append('tool/result', {
+      turn: goalTurn,
+      step: 1,
+      message: createToolResultMessage({ callId: failedCallId, content: [{ type: 'text', text: 'fetch failed' }], isError: true }),
+      error: { name: 'Error', code: 'FETCH_FAILED', reason: 'network unavailable' },
+    }, { surfaceOp: 'append' })
+    root.session.append('step/end', { turn: goalTurn, step: 1 })
+    const retryCallId = ToolCallId('goal-tool-retry-success')
+    root.session.append('step/start', { turn: goalTurn, step: 2 })
+    root.session.append('tool/call', { turn: goalTurn, step: 2, callId: retryCallId, name: 'web_fetch', arguments: '{}' })
+    root.session.append('tool/result', {
+      turn: goalTurn,
+      step: 2,
+      message: createToolResultMessage({ callId: retryCallId, content: [{ type: 'text', text: 'evidence' }], isError: false }),
+    }, { surfaceOp: 'append' })
+    root.session.append('step/end', { turn: goalTurn, step: 2 })
+
+    const complete = await execute(ctx, 'update_goal', {
+      goal_id: created.id,
+      revision: created.revision,
+      action: 'complete',
+    }, root.agent)
+    expect(complete.error).toBeUndefined()
+    expect(ctx.goals.get(root.agent)).toMatchObject({ phase: 'complete', roundsStarted: 1 })
+  })
+
   it('enforces the configured model self-block lower bound across admitted rounds', async () => {
     const { ctx, root } = await harness({ blockedAfterConsecutiveRounds: 3 })
     let turn = openTurn(root, { kind: 'user' })

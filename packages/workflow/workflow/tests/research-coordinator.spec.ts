@@ -276,6 +276,24 @@ describe('createWebLiteratureSearcher', () => {
       { url: 'https://example.test/paper', provider: 'web', title: 'Web result', snippet: 'web detail' },
     ])
   })
+
+  it('keeps arXiv results when the primary web search backend fails', async () => {
+    const web = Object.setPrototypeOf({
+      async search() { throw new Error('web search unavailable') },
+      async fetch(request: { readonly url: string }) {
+        return {
+          url: request.url,
+          statusCode: 200,
+          truncated: false,
+          body: { kind: 'text' as const, content: '<feed><entry><id>https://arxiv.org/abs/9876.5432</id><title>Fallback ML paper</title><summary>Evidence</summary></entry></feed>' },
+        }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['web', 'arxiv'] })).resolves.toEqual([
+      { url: 'https://arxiv.org/abs/9876.5432', provider: 'arxiv', title: 'Fallback ML paper', snippet: 'Evidence' },
+    ])
+  })
 })
 
 describe('createAttachmentPaperReader', () => {
