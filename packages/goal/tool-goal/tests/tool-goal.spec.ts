@@ -6,7 +6,7 @@ import type { Agent, AgentStatus, Inbox } from '@deepseek-ai/dsh-agent'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import GoalService, { GoalId } from '@deepseek-ai/dsh-goal'
 import type { GoalRef } from '@deepseek-ai/dsh-goal'
-import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, {
@@ -597,6 +597,61 @@ describe('goal tool state transitions', () => {
       goal_id: created.id, revision: created.revision, action: 'complete',
     }, root.agent)
     expect(resultGoal(complete)).toMatchObject({ phase: 'complete', revision: 2, roundsStarted: 1 })
+  })
+
+  it('keeps an autonomous goal active while a direct child agent is still running', async () => {
+    const { ctx, root } = await harness()
+    const humanTurn = openTurn(root, { kind: 'user' })
+    const created = ctx.goals.create(root.agent, { objective: 'wait for delegated review' })
+    closeTurn(root, humanTurn)
+
+    const childId = SessionId('goal-tool-active-child')
+    const childSession = Session.create(childId, [], {
+      version: SESSION_FORMAT_VERSION,
+      id: childId,
+      createdAt: Date.now(),
+      parentSession: root.session.id,
+      isSeeded: false,
+      origin: 'subagent',
+    })
+    const child = stubAgent(childId, childSession, ctx)
+    await ctx.agents.register(child.agent)
+
+    openTurn(root, { kind: 'goal', goalId: created.id, revision: created.revision, round: 1 })
+    const complete = await execute(ctx, 'update_goal', {
+      goal_id: created.id,
+      revision: created.revision,
+      action: 'complete',
+    }, root.agent)
+    expect(complete.error?.info?.code).toBe('GOAL_TOOL_INCOMPLETE')
+    expect(ctx.goals.get(root.agent)).toMatchObject({ phase: 'active', roundsStarted: 1 })
+  })
+
+  it('keeps an autonomous goal active after a failed non-goal tool call', async () => {
+    const { ctx, root } = await harness()
+    const humanTurn = openTurn(root, { kind: 'user' })
+    const created = ctx.goals.create(root.agent, { objective: 'verify fetched evidence' })
+    closeTurn(root, humanTurn)
+
+    const goalTurn = openTurn(root, { kind: 'goal', goalId: created.id, revision: created.revision, round: 1 })
+    const callId = ToolCallId('goal-tool-failed-call')
+    root.session.append('step/start', { turn: goalTurn, step: 1 })
+    root.session.append('tool/call', { turn: goalTurn, step: 1, callId, name: 'web_fetch', arguments: '{}' })
+    root.session.append('tool/result', {
+      turn: goalTurn,
+      step: 1,
+      message: createToolResultMessage({ callId, content: [{ type: 'text', text: 'fetch failed' }], isError: true }),
+      error: { name: 'Error', code: 'FETCH_FAILED', reason: 'network unavailable' },
+    }, { surfaceOp: 'append' })
+    root.session.append('step/end', { turn: goalTurn, step: 1 })
+
+    const complete = await execute(ctx, 'update_goal', {
+      goal_id: created.id,
+      revision: created.revision,
+      action: 'complete',
+    }, root.agent)
+    expect(complete.error?.info?.code).toBe('GOAL_TOOL_INCOMPLETE')
+    expect(ctx.goals.get(root.agent)).toMatchObject({ phase: 'active', roundsStarted: 1 })
   })
 
   it('enforces the configured model self-block lower bound across admitted rounds', async () => {

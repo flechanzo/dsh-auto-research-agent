@@ -19,6 +19,7 @@ declare module '@deepseek-ai/dsh-llm' {
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView } from '@deepseek-ai/dsh-tools'
 import {
+  completionBlockReason,
   completionAuthority,
   goalToolExecution,
   requireDirectHuman,
@@ -119,7 +120,9 @@ function guidance(blockedAfter: number): string {
     + 'resume to rearm it. Mark complete only when the objective is actually achieved. Mark '
     + `blocked only after the same blocking condition persists for at least ${blockedAfter} `
     + 'consecutive goal rounds, and report that concrete condition in blocked_reason; difficulty, uncertainty, '
-    + 'or useful remaining work is not blocked.'
+    + 'or useful remaining work is not blocked. During an automatic round, complete is accepted only after '
+    + 'all delegated subagents have finished and every failed non-goal tool call has been resolved or retried; '
+    + 'otherwise keep the goal active and continue the next round.'
 }
 
 /** Validate config even when apply is called directly outside Loader normalization. */
@@ -309,6 +312,15 @@ export function apply(ctx: Context, config: Config): void {
           + `current round is ${authority.goal.roundsStarted}`,
           'GOAL_TOOL_BLOCK_THRESHOLD',
         )
+      }
+      if (args.action === 'complete' && authority.kind === 'goal-round') {
+        const blocked = completionBlockReason(ctx, execution)
+        if (blocked !== undefined) {
+          throw new HarnessError(
+            `${blocked}; keep the goal active and continue with the next round`,
+            'GOAL_TOOL_INCOMPLETE',
+          )
+        }
       }
       const goal = args.action === 'complete'
         ? ctx.goals.complete(execution.agent, ref)

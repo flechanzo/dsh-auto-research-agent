@@ -15,6 +15,9 @@ export interface GoalToolExecution {
   readonly openTurnStartSeq: SessionSeq
 }
 
+/** Goal controls that may fail while the model is correcting its own request. */
+const GOAL_CONTROL_TOOLS = new Set(['create_goal', 'get_goal', 'update_goal'])
+
 /** Hard authority granted to one state-changing call. */
 export type GoalToolAuthority =
   | { readonly kind: 'direct-human' }
@@ -115,4 +118,43 @@ export function completionAuthority(ctx: Context, execution: GoalToolExecution):
     return { kind: 'goal-round', goal }
   }
   return reject('complete and blocked require a direct human turn or the current goal round')
+}
+
+/**
+ * Explain why an autonomous round cannot close while work is still incomplete.
+ *
+ * A continuable delegation returns as soon as its child accepts the prompt, so
+ * a parent can otherwise call `complete` while that child is still running.
+ * Tool failures in the same round have the same risk: the model may produce a
+ * plausible summary after an unsuccessful fetch or file operation. Goal-tool
+ * argument corrections are excluded because the model is expected to retry
+ * those calls in the same turn.
+ *
+ * @param ctx - Context carrying the live Agent registry.
+ * @param execution - Authenticated goal-tool execution and its event cut.
+ * @returns A user/model-facing reason when completion must be rejected.
+ */
+export function completionBlockReason(ctx: Context, execution: GoalToolExecution): string | undefined {
+  const calls = new Map<string, string>()
+  for (let seq = execution.openTurnStartSeq + 1; seq < execution.events.length; seq += 1) {
+    const event = execution.events[seq]
+    if (event === undefined) continue
+    if (event.type === 'tool/call') {
+      calls.set(event.data.callId, event.data.name)
+      continue
+    }
+    if (event.type !== 'tool/result' || event.data.message.isError !== true) continue
+    const name = calls.get(event.data.message.toolCallId)
+    if (name !== undefined && !GOAL_CONTROL_TOOLS.has(name)) {
+      return `tool "${name}" failed in this round; resolve or retry it before marking the goal complete`
+    }
+  }
+
+  const runningChild = ctx.agents.list().find(candidate => candidate !== execution.agent
+    && candidate.status === 'running'
+    && candidate.session.header.parentSession === execution.agent.session.id)
+  if (runningChild !== undefined) {
+    return `subagent "${runningChild.id}" is still running; wait for its result before marking the goal complete`
+  }
+  return undefined
 }
