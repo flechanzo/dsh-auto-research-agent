@@ -42,7 +42,6 @@ export function apply(ctx: ClientContext): void {
       inject: (): ResearchPanelInjected => ({
         research: ctx.remote.research,
         fileUpload: ctx.fileUpload,
-        openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
       }),
     }, ResearchPanel))
     ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({

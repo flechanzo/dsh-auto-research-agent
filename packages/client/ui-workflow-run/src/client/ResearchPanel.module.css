@@ -28,7 +28,7 @@
   min-width: 0;
   overflow: hidden;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -39,9 +39,33 @@
 }
 
 .branchRow,
+.branchTree,
 .timeline {
   overflow-x: auto;
   padding-bottom: 2px;
+}
+
+.branchTree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.branchTreeBranch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.branchTreeNodes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 14px;
+  border-left: 1px solid var(--dsw-alias-line-tertiary);
 }
 
 .branch,
@@ -58,6 +82,27 @@
 
 .branch {
   padding: 5px 8px;
+}
+
+.treeNode {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.treeNode:hover {
+  background: var(--dsw-alias-bg-module-platform);
 }
 
 .branchActive,
@@ -106,7 +151,7 @@
 
 .cardTitle {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .content {
@@ -224,4 +269,28 @@
 
 .fileInput {
   display: none;
+}
+
+.transcript,
+.finalPlan {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-line-tertiary);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.transcriptItem {
+  min-width: 0;
+  border-top: 1px solid var(--dsw-alias-line-tertiary);
+  padding-top: 6px;
+}
+
+.transcriptItem summary {
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
 }

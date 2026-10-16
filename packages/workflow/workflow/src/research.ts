@@ -39,6 +39,19 @@ export type ResearchDecision = 'confirm' | 'reject' | 'feedback'
 /** Search backends available to the research literature stages. */
 export type ResearchLiteratureSourceId = 'web' | 'arxiv'
 
+/** User-selectable research emphasis areas shown as a multi-select. */
+export type ResearchDirectionFocusId =
+  | 'method'
+  | 'data'
+  | 'theory'
+  | 'efficiency'
+  | 'application'
+
+/** Default focus areas used when a new research Session has no selection. */
+export const DEFAULT_RESEARCH_DIRECTION_FOCUSES: readonly ResearchDirectionFocusId[] = [
+  'method', 'data', 'theory', 'efficiency', 'application',
+]
+
 /** User-adjustable emphasis applied when agents propose and evaluate ideas. */
 export interface ResearchDirectionWeights {
   /** Weight for novelty and separation from prior work. */
@@ -58,6 +71,28 @@ export const DEFAULT_RESEARCH_DIRECTION_WEIGHTS: ResearchDirectionWeights = {
 
 /** Default literature backends; arXiv is included for machine-learning coverage. */
 export const DEFAULT_RESEARCH_LITERATURE_SOURCES: readonly ResearchLiteratureSourceId[] = ['web', 'arxiv']
+
+/**
+ * Render a stable human-facing label for a numbered idea branch.
+ *
+ * The root branch is numbered one and called “方案 A”. Subsequent branches
+ * use spreadsheet-style letters so labels remain unique after 26 branches.
+ * @param branchNumber - One-based branch number.
+ * @returns A branch label without the “方案” prefix.
+ */
+export function researchBranchLabel(branchNumber: number): string {
+  if (!Number.isSafeInteger(branchNumber) || branchNumber < 1) {
+    throw new Error('research branch number must be a positive safe integer')
+  }
+  let value = branchNumber
+  let label = ''
+  while (value > 0) {
+    const remainder = (value - 1) % 26
+    label = String.fromCharCode(65 + remainder) + label
+    value = Math.floor((value - 1) / 26)
+  }
+  return label
+}
 
 /** The output a stage makes available to the user and later agents. */
 export interface ResearchArtifact {
@@ -101,6 +136,8 @@ export interface ResearchMemorySnapshot {
   readonly directionWeights: ResearchDirectionWeights
   /** Literature backends copied into downstream nodes. */
   readonly literatureSources: readonly ResearchLiteratureSourceId[]
+  /** Research aspects selected by the user for idea generation. */
+  readonly directionFocuses: readonly ResearchDirectionFocusId[]
 }
 
 /** One immutable point in the conversation DAG. */
@@ -187,6 +224,7 @@ export function createResearchState(now = 0): ResearchState {
       artifactIds: [], feedback: [], reviewerRoles: [],
       directionWeights: { ...DEFAULT_RESEARCH_DIRECTION_WEIGHTS },
       literatureSources: [...DEFAULT_RESEARCH_LITERATURE_SOURCES],
+      directionFocuses: [...DEFAULT_RESEARCH_DIRECTION_FOCUSES],
     },
   }
   void now
@@ -248,6 +286,7 @@ export function appendResearchOutput(
       reviewerRoles: parent.memorySnapshot.reviewerRoles,
       directionWeights: parent.memorySnapshot.directionWeights,
       literatureSources: parent.memorySnapshot.literatureSources,
+      directionFocuses: parent.memorySnapshot.directionFocuses,
     },
   }
   const branch = state.branches[state.activeBranchId]
@@ -360,6 +399,26 @@ export function setResearchLiteratureSources(
 }
 
 /**
+ * Store the research aspects selected for the next idea prompt.
+ * @param state - Current research state.
+ * @param directionFocuses - One or more supported focus areas.
+ * @returns The state with the selected focus areas stored in branch memory.
+ */
+export function setResearchDirectionFocuses(
+  state: ResearchState,
+  directionFocuses: readonly ResearchDirectionFocusId[],
+): ResearchState {
+  const focuses = [...new Set(directionFocuses)]
+  if (focuses.length === 0) throw new Error('at least one research direction focus is required')
+  const node = selectedResearchNode(state)
+  const updated: ResearchNode = {
+    ...node,
+    memorySnapshot: { ...node.memorySnapshot, directionFocuses: focuses },
+  }
+  return { ...state, nodes: { ...state.nodes, [node.nodeId]: updated } }
+}
+
+/**
  * Mark the selected final node complete after its output has been written.
  * @param state - Current research state.
  * @returns The state with the selected node marked complete.
@@ -450,6 +509,7 @@ export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
       reviewerRoles: [],
       directionWeights: { ...source.memorySnapshot.directionWeights },
       literatureSources: [...source.memorySnapshot.literatureSources],
+      directionFocuses: [...source.memorySnapshot.directionFocuses],
     },
   }
   return {
@@ -459,7 +519,7 @@ export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
       ...state.branches,
       [branchId]: {
         branchId,
-        label: `方案 ${String.fromCharCode(65 + state.nextBranchNumber - 2)}`,
+        label: `方案 ${researchBranchLabel(state.nextBranchNumber)}`,
         forkNodeId: source.nodeId,
         nodeIds: [source.nodeId, nodeId],
       },

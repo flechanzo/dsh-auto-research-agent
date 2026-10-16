@@ -230,6 +230,8 @@ export interface ResearchAdvanceRequest {
   readonly parent: Agent
   /** Required for the paper-upload root step. */
   readonly paper?: FileAttachmentRef
+  /** All papers selected for the initial reading checkpoint. */
+  readonly papers?: readonly FileAttachmentRef[]
   /** Review roles selected by the user before the review step. */
   readonly reviewerRoles?: readonly string[]
   /** Direction emphasis copied into the next idea prompt. */
@@ -313,20 +315,29 @@ export class ResearchCoordinator {
   }
 
   private async readAndSummarize(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
-    if (request.paper === undefined) throw new Error('paper attachment is required before paper reading')
-    const paper = await this.adapters.papers.read(request.paper, request.signal, { parent: request.parent })
+    const papers = request.papers ?? (request.paper === undefined ? [] : [request.paper])
+    if (papers.length === 0) throw new Error('at least one paper attachment is required before paper reading')
+    const documents: ResearchPaperDocument[] = []
+    for (const paperRef of papers) {
+      request.signal?.throwIfAborted()
+      documents.push(await this.adapters.papers.read(paperRef, request.signal, { parent: request.parent }))
+    }
+    const prompt = documents.map(paper =>
+      `File: ${paper.fileName}\nExtraction method: ${paper.extractionMethod}\nInspected pages: ${paper.pageCount ?? 'not applicable'}\n\n${paper.text}`,
+    ).join('\n\n---\n\n')
     const summary = await this.adapters.agents.run(
       'paper-summarizer',
-      `Read the uploaded research paper below. Return a faithful structured summary with the question, method, data, results, limitations, and evidence. Do not invent facts. The extraction method was ${paper.extractionMethod}; the inspected page count was ${paper.pageCount ?? 'not applicable'}. If OCR was used, mark uncertain characters and avoid silently completing unreadable text.\n\nFile: ${paper.fileName}\n\n${paper.text}`,
+      `Read all uploaded research papers below. Return a separate faithful structured summary for every file, followed by a short cross-paper comparison of questions, methods, evidence, and limitations. Do not invent facts. If OCR was used, mark uncertain characters and avoid silently completing unreadable text.\n\n${prompt}`,
       request.parent,
       request.signal,
     )
+    const fileNames = documents.map(paper => paper.fileName).join(', ')
     const state = appendResearchOutput(request.state, {
       stage: 'paper-read',
       kind: 'summary',
-      title: `论文摘要：${paper.fileName}`,
-      content: `论文读取方式：${paper.extractionMethod}；检查页数：${paper.pageCount ?? '不适用'}。\n\n${summary}`,
-      source: paper.fileName,
+      title: `论文摘要（${String(documents.length)} 篇）`,
+      content: `${documents.map(paper => `### ${paper.fileName}\n\n读取方式：${paper.extractionMethod}；检查页数：${paper.pageCount ?? '不适用'}`).join('\n\n')}\n\n${summary}`,
+      source: fileNames,
     }, Date.now())
     return this.withLatestArtifact(state)
   }
@@ -335,7 +346,7 @@ export class ResearchCoordinator {
     const summary = this.latestArtifact(request.state, 'summary')
     const problem = await this.adapters.agents.run(
       'problem-extractor',
-      `Extract the most important testable research problem and gap from this paper summary. State assumptions, measurable failure modes, constraints, and what evidence would falsify the claim.\n\n${summary.content}`,
+      `Extract every distinct, testable research problem and research gap in this paper summary; do not select only one when several are present. Number the problems in priority order, and for each one state the assumptions, measurable failure modes, constraints, and evidence that would falsify the claim. End with a short synthesis explaining how the listed problems relate and which combinations should be addressed together. Preserve separate answers for separate questions so downstream literature search and idea generation can cover the full set.\n\n${summary.content}`,
       request.parent,
       request.signal,
     )
@@ -404,12 +415,13 @@ export class ResearchCoordinator {
     if (!Number.isInteger(threshold) || threshold < 0 || threshold > 100) throw new Error('innovation score threshold must be an integer from 0 to 100')
     if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new Error('innovation max attempts must be a positive integer')
     const weights = memory.directionWeights
+    const focuses = memory.directionFocuses.join(', ')
     let lastFailure = ''
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const role: ResearchAgentRole = input.refinement ? 'idea-refiner' : 'idea-generator'
       const idea = await this.adapters.agents.run(
         role,
-        `${input.refinement ? 'Revise the candidate research idea' : 'Propose one research improvement'} using only the material below. Return one falsifiable, implementable candidate. Explicitly label the innovation and explain why it differs from prior work. Include method, baselines, ablations, metrics, and risks. This is candidate attempt ${attempt}; make it materially distinct from failed candidates if any.\n\nDirection weights (sum need not equal 100): novelty=${weights.novelty}, impact=${weights.impact}, feasibility=${weights.feasibility}, reproducibility=${weights.reproducibility}.\n\nProblem or candidate context:\n${input.problem}\n\nLiterature evidence:\n${input.literature}${lastFailure.length === 0 ? '' : `\n\nPrevious candidate rejection reason (do not repeat it):\n${lastFailure}`}`,
+        `${input.refinement ? 'Revise the candidate research idea' : 'Propose one research improvement'} using only the material below. Return one falsifiable, implementable candidate. Explicitly label the innovation and explain why it differs from prior work. Include method, baselines, ablations, metrics, and risks. This is candidate attempt ${attempt}; make it materially distinct from failed candidates if any.\n\nDirection weights (sum need not equal 100): novelty=${weights.novelty}, impact=${weights.impact}, feasibility=${weights.feasibility}, reproducibility=${weights.reproducibility}.\nSelected direction focus areas: ${focuses}.\n\nProblem or candidate context:\n${input.problem}\n\nLiterature evidence:\n${input.literature}${lastFailure.length === 0 ? '' : `\n\nPrevious candidate rejection reason (do not repeat it):\n${lastFailure}`}`,
         request.parent,
         request.signal,
       )
@@ -1017,7 +1029,7 @@ function parseInnovationEvaluation(text: string, threshold: number): ResearchInn
   if (start < 0 || end <= start) throw new Error('INNOVATION_REVIEW_INVALID: expert did not return a JSON object')
   let value: unknown
   try {
-    value = JSON.parse(candidate.slice(start, end + 1)) as unknown
+    value = JSON.parse(candidate.slice(start, end + 1))
   } catch (error) {
     throw new Error('INNOVATION_REVIEW_INVALID: expert returned malformed JSON', { cause: error })
   }

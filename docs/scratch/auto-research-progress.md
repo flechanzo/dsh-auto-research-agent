@@ -2,7 +2,7 @@
 
 English | [中文](auto-research-progress.zh.md)
 
-Owner: Auto research workflow · Created: 2026-10-13 · Updated: 2026-10-15 · Expires: 2026-11-13 · Promotion target: the research workflow package and Web UI README pages
+Owner: Auto research workflow · Created: 2026-10-13 · Updated: 2026-10-16 · Expires: 2026-11-13 · Promotion target: the research workflow package and Web UI README pages
 
 This temporary page records the implementation checkpoints for the human-in-the-loop research workflow. Each checkpoint is committed and pushed to `flechanzo/dsh-auto-research-agent` before the next one starts.
 
@@ -16,6 +16,8 @@ This temporary page records the implementation checkpoints for the human-in-the-
 - **Scanned PDF/OCR — complete for this checkpoint.** The Host reader uses PDF.js per page, keeps usable embedded pages, and treats missing or very short page text as incomplete. It renders at most the configured page count, scale, and pixel budget with native canvas, persists each PNG through `AttachmentStore`, and sends only missing or sparse pages to a visual OCR subagent. The returned document merges embedded and OCR pages in source order, records `plain-text`, `embedded-text`, or `ocr`, includes the inspected page count, preserves page markers, and reports `PDF_OCR_UNAVAILABLE`, `PDF_OCR_PARENT_REQUIRED`, `PDF_OCR_EMPTY`, or page-specific `PDF_OCR_FAILED` errors clearly.
 - **Agent selector entry — current UI fix complete.** The new-session hero now labels the existing preset control as `Agent`, and the Web bundle ships an `Auto research agent` preset. Selecting it gives the agent the research workflow prompt and keeps the existing paper, web-search, subagent, review, and plan tools available.
 - **Multi-source literature and innovation review — current checkpoint complete.** Literature searches can combine the general Web backend with arXiv's machine-learning categories (`cs.LG`, `cs.AI`, `cs.CL`, and `stat.ML`), de-duplicate URLs, and carry the selected sources into the second targeted search. The problem-summary checkpoint exposes novelty, impact, feasibility, and reproducibility weights. Every generated or refined idea is evaluated by a fresh `innovation-reviewer` child using only the candidate and supplied literature evidence; candidates below the configured score threshold or marked as overlapping prior work are discarded and retried up to the configured limit. Passing artifacts retain the score, threshold, overlap result, and rationale for the UI and final plan.
+- **Same-panel interaction fixes — current checkpoint complete.** One file selection can upload several papers for one comparative reading stage. The right Sidebar displays the complete branch tree and expandable content for every stage, offers multi-select direction focus areas, and renders the final plan from the selected branch artifact after it is written. Continuing from an earlier node creates a branch in the current Session, keeps that node's memory, and does not reopen the left conversation list.
+- **Multi-question extraction — current checkpoint complete.** Problem extraction asks for every distinct testable question and gap in numbered form, keeps separate answers separate, and ends with a synthesis for downstream literature search and idea generation.
 
 ## Verification evidence
 
@@ -27,7 +29,7 @@ This temporary page records the implementation checkpoints for the human-in-the-
 
 ## Current checkpoint
 
-This checkpoint's arXiv and Web literature search, direction controls, isolated innovation scoring, overlap filtering, history restoration, post-direction targeted search, Markdown file writing, and scanned-PDF/OCR path are complete and ready to upload. Choose `Agent: Auto research agent` on the new-session hero before sending the first message, then open `Auto research workflow`, upload a paper, adjust direction emphasis and literature sources at the problem checkpoint, and confirm each stage. Select a historical node and choose `Restore this turn (new Session branch)` to resume that turn while retaining later nodes, all branches, and artifacts; switch branches to continue editing a different idea. The next checkpoint adds a concrete simple-simulation adapter, deliverable presentation, and end-to-end Remote coverage.
+This checkpoint's arXiv and Web literature search, direction controls, isolated innovation scoring, overlap filtering, history restoration, post-direction targeted search, multi-paper upload, same-panel branch navigation, Markdown file writing, and scanned-PDF/OCR path are complete and ready to upload. Choose `Agent: Auto research agent` on the new-session hero before sending the first message, then open `Auto research workflow`, upload several papers together when needed, adjust direction emphasis, focus areas, and literature sources at the problem checkpoint, and confirm each stage. Select any historical node in the branch tree and choose `Continue from this stage` to create a same-panel branch while retaining later nodes, all branches, and artifacts; switch branches to continue editing a different idea. The next checkpoint adds a concrete simple-simulation adapter, deliverable presentation, and end-to-end Remote coverage.
 
 ## Dev Note
 

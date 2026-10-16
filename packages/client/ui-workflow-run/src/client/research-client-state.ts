@@ -12,6 +12,20 @@ const DEFAULT_DIRECTION_WEIGHTS: ResearchDirectionWeights = {
   novelty: 30, impact: 25, feasibility: 25, reproducibility: 20,
 }
 
+const DEFAULT_DIRECTION_FOCUSES = ['method', 'data', 'theory', 'efficiency', 'application'] as const
+
+/** Render a stable letter label for a numbered browser-side branch. */
+function researchBranchLabel(branchNumber: number): string {
+  let value = branchNumber
+  let label = ''
+  while (value > 0) {
+    const remainder = (value - 1) % 26
+    label = String.fromCharCode(65 + remainder) + label
+    value = Math.floor((value - 1) / 26)
+  }
+  return label
+}
+
 /** Create the first paper-upload node for one browser tab.
  * @returns A new browser research state.
  */
@@ -21,6 +35,7 @@ export function createResearchState(): ResearchState {
     memorySnapshot: {
       artifactIds: [], feedback: [], reviewerRoles: [],
       directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['web', 'arxiv'],
+      directionFocuses: [...DEFAULT_DIRECTION_FOCUSES],
     },
   }
   return {
@@ -118,7 +133,7 @@ export function rejectIdea(state: ResearchState, reason = ''): ResearchState {
   return {
     ...state,
     nodes: { ...state.nodes, [nodeId]: node },
-    branches: { ...state.branches, [branchId]: { branchId, label: `方案 ${String.fromCharCode(65 + state.nextBranchNumber - 2)}`, forkNodeId: source.nodeId, nodeIds: [source.nodeId, nodeId] } },
+    branches: { ...state.branches, [branchId]: { branchId, label: `方案 ${researchBranchLabel(state.nextBranchNumber)}`, forkNodeId: source.nodeId, nodeIds: [source.nodeId, nodeId] } },
     activeBranchId: branchId, selectedNodeId: nodeId,
     nextNodeNumber: state.nextNodeNumber + 1, nextBranchNumber: state.nextBranchNumber + 1,
   }

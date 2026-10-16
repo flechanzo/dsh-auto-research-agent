@@ -42,6 +42,7 @@ export {
   selectResearchBranch,
   setResearchReviewerRoles,
   setResearchDirectionWeights,
+  setResearchDirectionFocuses,
   setResearchLiteratureSources,
   selectedResearchNode,
 } from './research.ts'
@@ -51,6 +52,7 @@ export type {
   ResearchDecision,
   ResearchMemorySnapshot,
   ResearchDirectionWeights,
+  ResearchDirectionFocusId,
   ResearchInnovationEvaluation,
   ResearchLiteratureSourceId,
   ResearchNode,
@@ -62,6 +64,7 @@ export type {
 export {
   DEFAULT_RESEARCH_DIRECTION_WEIGHTS,
   DEFAULT_RESEARCH_LITERATURE_SOURCES,
+  DEFAULT_RESEARCH_DIRECTION_FOCUSES,
 } from './research.ts'
 export {
   createAttachmentPaperReader,

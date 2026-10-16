@@ -8,6 +8,8 @@ export type {
   ResearchArtifact,
   ResearchBranch,
   ResearchCommandValue,
+  ResearchConfirmRequest,
+  ResearchDirectionFocusId,
   ResearchDirectionWeights,
   ResearchInnovationEvaluation,
   ResearchLiteratureSourceId,
@@ -18,6 +20,7 @@ export type {
   ResearchSnapshot,
   ResearchStage,
   ResearchState,
+  ResearchUploadRequest,
 } from '../types.ts'
 
 /** Required Client Remote services. */

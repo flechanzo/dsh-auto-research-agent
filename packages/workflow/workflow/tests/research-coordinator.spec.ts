@@ -55,6 +55,52 @@ function confirm(state: Parameters<typeof confirmResearchNode>[0]) {
 }
 
 describe('ResearchCoordinator', () => {
+  it('reads several uploaded papers in one comparative stage', async () => {
+    const prompts: string[] = []
+    const base = adapters()
+    const coordinator = new ResearchCoordinator({
+      ...base,
+      agents: {
+        async run(role, prompt, owner, signal) {
+          prompts.push(prompt)
+          return base.agents.run(role, prompt, owner, signal)
+        },
+      },
+    })
+    const papers = [
+      { attachmentId: AttachmentId('sha256:paper-a'), name: 'paper-a.txt', bytes: 12 },
+      { attachmentId: AttachmentId('sha256:paper-b'), name: 'paper-b.txt', bytes: 13 },
+    ] as const
+    const result = await coordinator.advance({ state: createResearchState(), parent, papers })
+    const artifact = result.artifact
+    expect(artifact?.title).toBe('论文摘要（2 篇）')
+    expect(artifact?.source).toContain('paper-a.txt')
+    expect(artifact?.source).toContain('paper-b.txt')
+    expect(prompts[0]).toContain('File: paper-a.txt')
+    expect(prompts[0]).toContain('File: paper-b.txt')
+  })
+
+  it('asks the problem extractor to retain every distinct question', async () => {
+    const prompts: string[] = []
+    const base = adapters()
+    const coordinator = new ResearchCoordinator({
+      ...base,
+      agents: {
+        async run(role, prompt, owner, signal) {
+          if (role === 'problem-extractor') prompts.push(prompt)
+          return base.agents.run(role, prompt, owner, signal)
+        },
+      },
+    })
+    const paper = { attachmentId: AttachmentId('sha256:questions'), name: 'questions.txt', bytes: 48 } as const
+    let state = (await coordinator.advance({ state: createResearchState(), parent, paper })).state
+    state = confirm(state)
+    await coordinator.advance({ state, parent })
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toContain('every distinct, testable research problem')
+    expect(prompts[0]).toContain('Preserve separate answers for separate questions')
+  })
+
   it('executes every confirmed stage and renders a final plan', async () => {
     const searchQueries: string[] = []
     const written: string[] = []

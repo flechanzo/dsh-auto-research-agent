@@ -61,7 +61,7 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-client-connection': ['OperatorPeer'],
   '@deepseek-ai/dsh-subprocess': ['SubprocessExecutableNotFoundError'],
   '@deepseek-ai/dsh-scope': ['carrierKeyOf', 'createScope', 'scopeOf', 'scopeTarget'],
-  '@deepseek-ai/dsh-session': ['SESSION_FORMAT_VERSION'],
+  '@deepseek-ai/dsh-session': ['SESSION_FORMAT_VERSION', 'SessionId'],
   '@deepseek-ai/dsh-session-persistence': ['SessionPersistenceNotFoundError'],
   '@deepseek-ai/dsh-storage-domain': ['defineDomain', 'domainTable'],
   '@deepseek-ai/dsh-workflow': [
@@ -73,7 +73,12 @@ const PEER_REQUIRED_HOST_EXPORTS = {
     'rejectIdea',
     'selectResearchBranch',
     'selectResearchNode',
+    'setResearchDirectionFocuses',
+    'setResearchDirectionWeights',
+    'setResearchLiteratureSources',
     'setResearchReviewerRoles',
+    'markResearchSessionBoundary',
+    'researchSourceSessionId',
   ],
 } as const satisfies HostDependencyExports
 

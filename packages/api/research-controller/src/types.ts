@@ -14,6 +14,9 @@ export type ResearchStage =
 /** Literature backends available to the research workflow. */
 export type ResearchLiteratureSourceId = 'web' | 'arxiv'
 
+/** User-selectable research emphasis areas. */
+export type ResearchDirectionFocusId = 'method' | 'data' | 'theory' | 'efficiency' | 'application'
+
 /** User-adjustable emphasis for idea generation and expert evaluation. */
 export interface ResearchDirectionWeights {
   readonly novelty: number
@@ -62,6 +65,7 @@ export interface ResearchMemorySnapshot {
   readonly reviewerRoles: readonly string[]
   readonly directionWeights: ResearchDirectionWeights
   readonly literatureSources: readonly ResearchLiteratureSourceId[]
+  readonly directionFocuses: readonly ResearchDirectionFocusId[]
 }
 
 /** Immutable stage node in the research conversation DAG. */
@@ -159,7 +163,10 @@ export interface ResearchReadRequest {
 export interface ResearchUploadRequest {
   readonly sessionId: SessionId
   readonly expectedRevision: number
-  readonly paper: FileAttachmentRef
+  /** Backward-compatible single-paper field. */
+  readonly paper?: FileAttachmentRef
+  /** All papers selected in one upload operation. */
+  readonly papers?: readonly FileAttachmentRef[]
 }
 
 /** Confirm the selected output and run exactly one next coordinator step. */
@@ -170,6 +177,8 @@ export interface ResearchConfirmRequest {
   readonly reviewerRoles?: readonly string[]
   /** Direction emphasis selected before idea generation. */
   readonly directionWeights?: ResearchDirectionWeights
+  /** Research aspects selected in the direction multi-select. */
+  readonly directionFocuses?: readonly ResearchDirectionFocusId[]
   /** Literature backends selected before the first search. */
   readonly literatureSources?: readonly ResearchLiteratureSourceId[]
   /** Required when confirming the simulation-or-plan checkpoint. */

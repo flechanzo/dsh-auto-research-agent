@@ -10,10 +10,21 @@ import {
   markResearchSessionBoundary,
   researchSourceSessionId,
   rejectIdea,
+  researchBranchLabel,
   selectResearchNode,
+  setResearchDirectionFocuses,
 } from '../src/research.ts'
 
 describe('research workflow state', () => {
+  it('keeps generated branch labels unique beyond the alphabet', () => {
+    expect(researchBranchLabel(1)).toBe('A')
+    expect(researchBranchLabel(2)).toBe('B')
+    expect(researchBranchLabel(26)).toBe('Z')
+    expect(researchBranchLabel(27)).toBe('AA')
+    expect(researchBranchLabel(52)).toBe('AZ')
+    expect(researchBranchLabel(53)).toBe('BA')
+  })
+
   it('keeps stage outputs visible and confirms them before continuation', () => {
     let state = createResearchState()
     state = appendResearchOutput(state, {
@@ -22,6 +33,12 @@ describe('research workflow state', () => {
     expect(state.nodes[state.selectedNodeId]?.status).toBe('awaiting-confirmation')
     state = confirmResearchNode(state)
     expect(state.nodes[state.selectedNodeId]?.userDecision).toBe('confirm')
+  })
+
+  it('stores at least one selected research focus in branch memory', () => {
+    const state = setResearchDirectionFocuses(createResearchState(), ['method', 'application'])
+    expect(state.nodes[state.selectedNodeId]?.memorySnapshot.directionFocuses).toEqual(['method', 'application'])
+    expect(() => setResearchDirectionFocuses(state, [])).toThrow('at least one research direction focus')
   })
 
   it('rejects an idea into a new branch while preserving the original branch', () => {
@@ -35,6 +52,7 @@ describe('research workflow state', () => {
     const oldBranch = state.activeBranchId
     state = rejectIdea(state, '缺少消融实验')
     expect(state.activeBranchId).not.toBe(oldBranch)
+    expect(state.branches[state.activeBranchId]?.label).toBe('方案 B')
     expect(state.branches[oldBranch]?.nodeIds).toHaveLength(3)
     expect(state.nodes[state.selectedNodeId]?.stage).toBe('idea-generation')
     expect(state.nodes[state.selectedNodeId]?.userNote).toBe('缺少消融实验')

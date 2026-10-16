@@ -5,10 +5,10 @@ import type {
   ResearchArtifact,
   ResearchCommandValue,
   ResearchDirectionWeights,
+  ResearchDirectionFocusId,
   ResearchLiteratureSourceId,
   ResearchNode,
   ResearchRemote,
-  ResearchSnapshot,
   ResearchStage,
   ResearchState,
 } from '@deepseek-ai/dsh-api-research-controller/client'
@@ -26,8 +26,6 @@ export interface ResearchPanelInjected {
   readonly research: ResearchRemote
   /** Browser file upload service that returns an attachment reference. */
   readonly fileUpload: FileUploadService
-  /** Open a forked Session when the user restores a historical stage. */
-  readonly openSession: (sessionId: ResearchSnapshot['sessionId']) => void
 }
 
 const REVIEWER_ROLES = [
@@ -75,6 +73,7 @@ function initialResearchState(label: string): ResearchState {
     memorySnapshot: {
       artifactIds: [], feedback: [], reviewerRoles: [],
       directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['web', 'arxiv'],
+      directionFocuses: ['method', 'data', 'theory', 'efficiency', 'application'],
     },
   }
   return {
@@ -107,7 +106,7 @@ function failureText(failure: { readonly message: string; readonly code: string 
 }
 
 /** Render the staged research workflow, its branches, artifacts, and checkpoints. */
-export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, openSession, t }: ResearchPanelProps): ReactNode {
+export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }: ResearchPanelProps): ReactNode {
   const { tab } = useTabInfo()
   const [state, setState] = useState<ResearchState>()
   const [revision, setRevision] = useState(0)
@@ -118,22 +117,39 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
   const [choice, setChoice] = useState<'simulation' | 'plan'>('plan')
   const [directionWeights, setDirectionWeights] = useState<ResearchDirectionWeights>(DEFAULT_DIRECTION_WEIGHTS)
   const [literatureSources, setLiteratureSources] = useState<readonly ResearchLiteratureSourceId[]>(['web', 'arxiv'])
+  const [directionFocuses, setDirectionFocuses] = useState<readonly ResearchDirectionFocusId[]>(['method', 'data', 'theory', 'efficiency', 'application'])
   const [reviewers, setReviewers] = useState<readonly string[]>(REVIEWER_ROLES.map(item => item.role))
   const inputRef = useRef<HTMLInputElement>(null)
   const displayState = state ?? initialResearchState(t('research.defaultBranch'))
   const selected = selectedResearchNode(displayState)
   const branch = displayState.branches[displayState.activeBranchId]
+  const selectedBranch = displayState.branches[selected.branchId] ?? branch
   const branchNodes = useMemo(
-    () => branch?.nodeIds.map(id => displayState.nodes[id]).filter(node => node !== undefined) ?? [],
-    [branch, displayState.nodes],
+    () => selectedBranch?.nodeIds.map(id => displayState.nodes[id]).filter(node => node !== undefined) ?? [],
+    [selectedBranch, displayState.nodes],
+  )
+  const allBranches = useMemo(
+    () => Object.values(displayState.branches).sort((left, right) => left.branchId.localeCompare(
+      right.branchId,
+      undefined,
+      { numeric: true },
+    )),
+    [displayState.branches],
   )
   const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
   const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== sessionId
   const canMutate = !isHistorical && !sessionMismatch
-  const canContinue = !sessionMismatch && isHistorical && selected.stage !== 'paper-upload' && selected.stage !== 'final-plan'
-  const canRestore = selected.sessionSeq !== undefined && (isHistorical || sessionMismatch)
+  const canContinue = isHistorical && selected.stage !== 'paper-upload' && selected.stage !== 'final-plan'
   const artifact = latestArtifact(displayState, selected)
+  const stageArtifacts = useMemo(() => branchNodes
+    .map(node => ({ node, artifact: latestArtifact(displayState, node) }))
+    .filter((item): item is { node: ResearchNode; artifact: ResearchArtifact } => item.artifact !== undefined),
+  [branchNodes, displayState])
   const ideaNeedsReview = selected.stage === 'idea-generation' || selected.stage === 'idea-refinement'
+  const finalPlanArtifact = useMemo(
+    () => [...stageArtifacts].reverse().find(item => item.artifact.kind === 'plan')?.artifact,
+    [stageArtifacts],
+  )
 
   useEffect(() => {
     let disposed = false
@@ -170,7 +186,14 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
   useEffect(() => {
     setDirectionWeights(selected.memorySnapshot.directionWeights ?? DEFAULT_DIRECTION_WEIGHTS)
     setLiteratureSources(selected.memorySnapshot.literatureSources ?? ['web', 'arxiv'])
-  }, [selected.nodeId, selected.memorySnapshot.directionWeights, selected.memorySnapshot.literatureSources])
+    setDirectionFocuses(selected.memorySnapshot.directionFocuses
+      ?? ['method', 'data', 'theory', 'efficiency', 'application'])
+  }, [
+    selected.nodeId,
+    selected.memorySnapshot.directionWeights,
+    selected.memorySnapshot.literatureSources,
+    selected.memorySnapshot.directionFocuses,
+  ])
 
   const execute = async (operation: () => Promise<RemoteResult<ResearchCommandValue>>): Promise<ResearchCommandValue | undefined> => {
     if (busy) return undefined
@@ -182,9 +205,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
         setError(failureText(result.error, t))
         return undefined
       }
-      // A restore forks the Session and returns the child snapshot before the
-      // workspace navigation completes. Keep the source panel unchanged until
-      // its sessionId changes so edits cannot target the wrong Session.
+      // A historical continuation stays in this Session so the panel can keep
+      // the branch tree and all later nodes visible while editing the fork.
       if (result.value.snapshot.sessionId === sessionId) {
         setRevision(result.value.snapshot.revision)
         setState(result.value.snapshot.state)
@@ -199,13 +221,17 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
   }
 
   const upload = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0]
-    if (file === undefined) return
+    const files = [...(event.target.files ?? [])]
+    if (files.length === 0) return
     event.target.value = ''
     void execute(async () => {
-      const uploaded = await fileUpload.upload(sessionId, file, file.name, tab.signal)
-      if (!uploaded.ok) return uploaded
-      return research.upload({ sessionId, expectedRevision: revision, paper: uploaded.value.file }, tab.signal)
+      const papers = []
+      for (const file of files) {
+        const uploaded = await fileUpload.upload(sessionId, file, file.name, tab.signal)
+        if (!uploaded.ok) return uploaded
+        papers.push(uploaded.value.file)
+      }
+      return research.upload({ sessionId, expectedRevision: revision, papers }, tab.signal)
     })
   }
 
@@ -214,6 +240,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
       sessionId, expectedRevision: revision,
       ...(selected.stage === 'targeted-literature-search' ? { reviewerRoles: reviewers } : {}),
       ...(selected.stage === 'problem-summary' ? { directionWeights, literatureSources } : {}),
+      ...(selected.stage === 'problem-summary' ? { directionFocuses } : {}),
       ...(selected.stage === 'simulation-or-final-plan' ? { finalChoice: choice } : {}),
     }, tab.signal))
   }
@@ -244,14 +271,6 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
     void execute(() => research.continueFromNode({ sessionId, expectedRevision: revision, nodeId }))
   }
 
-  const restoreNode = (): void => {
-    if (selected.sessionSeq === undefined) return
-    void execute(() => research.restore({ sessionId, expectedRevision: revision, nodeId: selected.nodeId }))
-      .then((result) => {
-        if (result !== undefined && result.snapshot.sessionId !== sessionId) openSession(result.snapshot.sessionId)
-      })
-  }
-
   return (
     <div className={css.root} data-research-panel data-tab-id={tab.id} aria-busy={loading || busy}>
       <div className={css.header}>
@@ -261,17 +280,36 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
 
       <div>
         <div className={css.subtle}>{t('research.branch')}</div>
-        <div className={css.branchRow} aria-label={t('research.branch')}>
-          {Object.values(displayState.branches).map(item => (
-            <button
-              key={item.branchId}
-              type="button"
-              className={item.branchId === displayState.activeBranchId ? `${css.branch} ${css.branchActive}` : css.branch}
-              onClick={() => { selectBranch(item.branchId) }}
-              disabled={busy || item.branchId === displayState.activeBranchId}
-            >
-              <IconBranchOutlineRegular size={13} /> {item.label}
-            </button>
+        <div className={css.branchTree} aria-label={t('research.branch')}>
+          {allBranches.map(item => (
+            <div key={item.branchId} className={css.branchTreeBranch}>
+              <button
+                type="button"
+                className={item.branchId === displayState.activeBranchId ? `${css.branch} ${css.branchActive}` : css.branch}
+                onClick={() => { selectBranch(item.branchId) }}
+                disabled={busy || item.branchId === displayState.activeBranchId}
+              >
+                <IconBranchOutlineRegular size={13} /> {item.label}
+              </button>
+              <div className={css.branchTreeNodes}>
+                {item.nodeIds.map((nodeId) => {
+                  const node = displayState.nodes[nodeId]
+                  if (node === undefined) return null
+                  return (
+                    <button
+                      key={node.nodeId}
+                      type="button"
+                      className={node.nodeId === displayState.selectedNodeId ? `${css.treeNode} ${css.nodeSelected}` : css.treeNode}
+                      onClick={() => { selectNode(node.nodeId) }}
+                      disabled={busy || node.nodeId === displayState.selectedNodeId}
+                    >
+                      <span>{stageText(node.stage, t)}</span>
+                      <span className={css.nodeStatus}>{statusText(node.status, t)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -325,6 +363,29 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
                 <output>{directionWeights[key]}</output>
               </label>
             ))}
+            <div className={css.subtle}>{t('research.directionFocuses')}</div>
+            <div className={css.reviewerRow}>
+              {([
+                ['method', 'research.focus.method'],
+                ['data', 'research.focus.data'],
+                ['theory', 'research.focus.theory'],
+                ['efficiency', 'research.focus.efficiency'],
+                ['application', 'research.focus.application'],
+              ] as const).map(([focus, labelKey]) => (
+                <label key={focus} className={css.reviewer}>
+                  <input
+                    type="checkbox"
+                    checked={directionFocuses.includes(focus)}
+                    onChange={(event) => {
+                      setDirectionFocuses(current => event.target.checked
+                        ? [...new Set([...current, focus])]
+                        : current.filter(item => item !== focus))
+                    }}
+                  />
+                  {t(labelKey)}
+                </label>
+              ))}
+            </div>
             <div className={css.subtle}>{t('research.literatureSources')}</div>
             <div className={css.reviewerRow}>
               {([
@@ -341,7 +402,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
         )}
         {selected.stage === 'paper-upload' && (
           <>
-            <input ref={inputRef} className={css.fileInput} type="file" accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />
+            <input ref={inputRef} className={css.fileInput} type="file" multiple accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />
             <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={() => inputRef.current?.click()}>
               {t('research.upload')}
             </button>
@@ -384,17 +445,30 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, ope
             <button type="button" disabled={busy || loading} className={choice === 'plan' ? `${css.button} ${css.branchActive}` : css.button} onClick={() => { setChoice('plan') }}>{t('research.plan')}</button>
           </div>
         )}
-        {(canContinue || canRestore) && (
+        {canContinue && (
           <div className={css.actionRow}>
-            {canRestore && (
-              <button type="button" disabled={busy || loading} className={css.primaryButton} onClick={restoreNode}>{t('research.restore')}</button>
-            )}
-            {canContinue && (
-              <button type="button" disabled={busy || loading} className={css.button} onClick={() => { continueFromNode(selected.nodeId) }}>{t('research.continue')}</button>
-            )}
+            <button type="button" disabled={busy || loading} className={css.button} onClick={() => { continueFromNode(selected.nodeId) }}>{t('research.continue')}</button>
           </div>
         )}
       </div>
+      {stageArtifacts.length > 0 && (
+        <section className={css.transcript} aria-label={t('research.stageContents')}>
+          <div className={css.subtle}>{t('research.stageContents')}</div>
+          {stageArtifacts.map(({ node, artifact: item }) => (
+            <details key={node.nodeId} open={node.nodeId === selected.nodeId} className={css.transcriptItem}>
+              <summary>{stageText(node.stage, t)} · {item.title}</summary>
+              <pre className={css.content}>{item.content}</pre>
+            </details>
+          ))}
+        </section>
+      )}
+      {finalPlanArtifact !== undefined && (
+        <section className={css.finalPlan} aria-label={t('research.finalPlanOutput')}>
+          <div className={css.cardTitle}>{t('research.finalPlanOutput')}</div>
+          <div className={css.successNotice}>{t('research.planWritten', { path: finalPlanArtifact.source ?? 'research-plan.md' })}</div>
+          <pre className={css.content}>{finalPlanArtifact.content}</pre>
+        </section>
+      )}
     </div>
   )
 }

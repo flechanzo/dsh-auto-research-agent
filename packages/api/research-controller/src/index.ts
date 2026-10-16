@@ -17,6 +17,7 @@ import {
   selectResearchNode,
   setResearchReviewerRoles,
   setResearchDirectionWeights,
+  setResearchDirectionFocuses,
   setResearchLiteratureSources,
   markResearchSessionBoundary,
   researchSourceSessionId,
@@ -74,6 +75,7 @@ const researchStage = zod.enum([
 const researchStatus = zod.enum(['pending', 'active', 'awaiting-confirmation', 'confirmed', 'rejected', 'completed'])
 const researchKind = zod.enum(['paper', 'summary', 'problem', 'literature', 'idea', 'review', 'simulation', 'plan', 'decision'])
 const researchLiteratureSource = zod.enum(['web', 'arxiv'])
+const researchDirectionFocus = zod.enum(['method', 'data', 'theory', 'efficiency', 'application'])
 const researchLiteratureSourceConfig = z.union(['web', 'arxiv'] as const)
 const researchDirectionWeights = zod.object({
   novelty: zod.number().int().min(0).max(100),
@@ -101,6 +103,7 @@ const researchArtifact = researchArtifactInput.transform((artifact): ResearchArt
 const researchMemoryInput = zod.object({
   artifactIds: zod.array(zod.string()), feedback: zod.array(zod.string()), reviewerRoles: zod.array(zod.string()),
   directionWeights: researchDirectionWeights.optional(), literatureSources: zod.array(researchLiteratureSource).optional(),
+  directionFocuses: zod.array(researchDirectionFocus).optional(),
 })
 const researchMemory = researchMemoryInput.transform((memory): ResearchMemorySnapshot => ({
   artifactIds: memory.artifactIds,
@@ -108,6 +111,7 @@ const researchMemory = researchMemoryInput.transform((memory): ResearchMemorySna
   reviewerRoles: memory.reviewerRoles,
   directionWeights: memory.directionWeights ?? { novelty: 30, impact: 25, feasibility: 25, reproducibility: 20 },
   literatureSources: memory.literatureSources ?? ['web', 'arxiv'],
+  directionFocuses: memory.directionFocuses ?? ['method', 'data', 'theory', 'efficiency', 'application'],
 }))
 const researchNodeInput = zod.object({
   nodeId: zod.string(), parentNodeId: zod.string().optional(), branchId: zod.string(),
@@ -247,7 +251,9 @@ export class ResearchController extends TypertRemoteService {
   @Remote('upload')
   upload(request: ResearchUploadRequest, signal: AbortSignal): Promise<ResearchCommandValue> {
     return this.serialize(() => this.advance(request.sessionId, request.expectedRevision, signal, state => ({
-      state, paper: request.paper,
+      state,
+      ...(request.paper === undefined ? {} : { paper: request.paper }),
+      ...(request.papers === undefined ? {} : { papers: request.papers }),
     })))
   }
 
@@ -263,6 +269,7 @@ export class ResearchController extends TypertRemoteService {
       let next = state
       if (request.reviewerRoles !== undefined) next = setResearchReviewerRoles(next, request.reviewerRoles)
       if (request.directionWeights !== undefined) next = setResearchDirectionWeights(next, request.directionWeights)
+      if (request.directionFocuses !== undefined) next = setResearchDirectionFocuses(next, request.directionFocuses)
       if (request.literatureSources !== undefined) next = setResearchLiteratureSources(next, request.literatureSources)
       const confirmed = confirmResearchNode(next)
       return request.finalChoice === undefined
@@ -334,8 +341,34 @@ export class ResearchController extends TypertRemoteService {
   continueFromNode(request: ResearchContinueRequest): Promise<ResearchCommandValue> {
     return this.serialize(async () => {
       const current = await this.current(request.sessionId, request.expectedRevision)
-      return this.commit(request.sessionId, current.revision, continueFromResearchNode(current.state, request.nodeId))
+      return this.commit(
+        request.sessionId,
+        current.revision,
+        this.continueResearchNodeInCurrentSession(current.state, request.nodeId, request.sessionId),
+      )
     })
+  }
+
+  /**
+ * Continue a displayed node inside the current Session while retaining its
+ * branch memory. Nodes copied from a previously restored Session carry that
+ * Session's event boundary; a same-panel continuation must bind its next
+ * mutation to the current Session instead.
+ * @param state - Current research DAG.
+ * @param nodeId - Node selected for continuation.
+ * @param sessionId - Session that will receive the continuation.
+ * @returns A continuation state safe for mutation in `sessionId`.
+ */
+  private continueResearchNodeInCurrentSession(
+    state: ResearchState,
+    nodeId: string,
+    sessionId: SessionId,
+  ): ResearchState {
+    const continued = continueFromResearchNode(state, nodeId)
+    const node = continued.nodes[continued.selectedNodeId]
+    if (node === undefined || node.sourceSessionId === undefined || node.sourceSessionId === sessionId) return continued
+    const { sessionSeq: _sessionSeq, sourceSessionId: _sourceSessionId, ...rebound } = node
+    return { ...continued, nodes: { ...continued.nodes, [node.nodeId]: rebound } }
   }
 
   /**
@@ -378,6 +411,7 @@ export class ResearchController extends TypertRemoteService {
     prepare: (state: ResearchState) => {
       readonly state: ResearchState
       readonly paper?: FileAttachmentRef
+      readonly papers?: readonly FileAttachmentRef[]
       readonly finalChoice?: 'simulation' | 'plan'
     },
   ): Promise<ResearchCommandValue> {
@@ -405,6 +439,7 @@ export class ResearchController extends TypertRemoteService {
       state: prepared.state,
       parent: agent,
       ...(prepared.paper === undefined ? {} : { paper: prepared.paper }),
+      ...(prepared.papers === undefined ? {} : { papers: prepared.papers }),
       ...(prepared.finalChoice === undefined ? {} : { finalChoice: prepared.finalChoice }),
       signal,
     })
