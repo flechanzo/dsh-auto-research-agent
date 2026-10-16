@@ -68,7 +68,13 @@ export function resolveChildDepth(parent: Agent, maxDepth: number | undefined): 
  */
 export function parentAgentOptionsForDelegation(parent: Agent): AgentOptions {
   const requestConfig = parent.session.requestHeader()?.config
-  if (requestConfig === undefined) return { ...parent.options }
+  // A persisted header can be present even when an earlier request failed
+  // before a route was selected. Do not let that incomplete snapshot erase a
+  // valid creation-time route: children must inherit one complete provider /
+  // model pair or fail with the normal missing-route diagnostic.
+  if (requestConfig === undefined || !hasCompleteRoute(requestConfig.provider, requestConfig.model)) {
+    return { ...parent.options }
+  }
   const {
     provider: _createdProvider,
     model: _createdModel,
@@ -83,6 +89,11 @@ export function parentAgentOptionsForDelegation(parent: Agent): AgentOptions {
       ? {}
       : { reasoningEffort: requestConfig.reasoningEffort },
   }
+}
+
+/** Whether a provider/model pair is usable for a child request. */
+function hasCompleteRoute(provider: string | undefined, model: string | undefined): boolean {
+  return provider !== undefined && provider.length > 0 && model !== undefined && model.length > 0
 }
 
 /**

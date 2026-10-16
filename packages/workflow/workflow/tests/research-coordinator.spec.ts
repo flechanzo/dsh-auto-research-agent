@@ -260,6 +260,22 @@ describe('createWebLiteratureSearcher', () => {
     expect(sources[0]).toMatchObject({ provider: 'arxiv', title: 'A ML paper', url: 'https://arxiv.org/abs/1234.5678' })
     expect(fetchedUrls[0]).toContain('cat%3Acs.LG')
   })
+
+  it('keeps primary web results when arXiv is blocked by the network policy', async () => {
+    const web = Object.setPrototypeOf({
+      async search() {
+        return { sources: [{ url: 'https://example.test/paper', title: 'Web result', snippet: 'web detail' }], truncated: false }
+      },
+      async fetch(request: { readonly url: string }) {
+        if (request.url.includes('arxiv.org/api')) throw new Error('URL resolves to a non-public IP')
+        return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content: 'web detail' } }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['web', 'arxiv'] })).resolves.toEqual([
+      { url: 'https://example.test/paper', provider: 'web', title: 'Web result', snippet: 'web detail' },
+    ])
+  })
 })
 
 describe('createAttachmentPaperReader', () => {

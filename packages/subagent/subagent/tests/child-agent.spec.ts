@@ -73,4 +73,17 @@ describe('child Agent options', () => {
       subagentDepth: 1,
     })
   })
+
+  it('keeps the creation route when a request snapshot is incomplete', () => {
+    const parent = parentAgent()
+    parent.session.requestHeader = () => ({ config: { provider: '', model: '' } })
+
+    expect(resolveChildAgentOptions(parent, undefined, 1)).toEqual({
+      provider: 'parent-provider',
+      model: 'parent-model',
+      reasoningEffort: 'high',
+      maxTokens: 512,
+      subagentDepth: 1,
+    })
+  })
 })

@@ -31,7 +31,9 @@ afterEach(async () => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-async function harness(): Promise<{ ctx: Context; agents: ApiSessionAgentController }> {
+async function harness(
+  defaultModel: { provider: string; model: string } = { provider: 'fixture', model: 'fixture-model' },
+): Promise<{ ctx: Context; agents: ApiSessionAgentController }> {
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(TypertRegistry)
@@ -41,7 +43,7 @@ async function harness(): Promise<{ ctx: Context; agents: ApiSessionAgentControl
   ctx.sessionProjections.register(agentPresetProjectionDefinition)
   installModelSelectionProjection(ctx)
   ctx.provide('agentDefaultModel', {
-    currentSelection: () => ({ provider: 'fixture', model: 'fixture-model' }),
+    currentSelection: () => defaultModel,
     saveSelection: () => Promise.resolve(),
   } as never)
   return { ctx, agents: new ApiSessionAgentController(ctx) }
@@ -76,6 +78,12 @@ function unpublishedAgent(ctx: Context, meta: SessionHeader): Agent {
 }
 
 describe('ApiSession identity failures', () => {
+  it('rejects a fresh Session when no default model route is configured', async () => {
+    const { agents } = await harness({ provider: '', model: '' })
+    await expect(agents.ensureSession(SessionId('empty-route'), '/workspace', false))
+      .rejects.toThrow('no model route is configured')
+  })
+
   it('describes cwd conflicts with and without a recorded cwd', () => {
     expect(new ApiSessionCwdConflict(SessionId('missing-cwd'), '/wanted', undefined).message)
       .toContain('records no cwd')

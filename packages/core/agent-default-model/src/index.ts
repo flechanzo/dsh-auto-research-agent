@@ -49,8 +49,8 @@ export class AgentDefaultModelConfig extends Service {
   private saves: Promise<void> = Promise.resolve()
 
   static Config = z.object({
-    provider: z.string().required().volatile(),
-    model: z.string().required().volatile(),
+    provider: z.string().min(1).required().volatile(),
+    model: z.string().min(1).required().volatile(),
     reasoningEffort: z.string().volatile(),
   })
 

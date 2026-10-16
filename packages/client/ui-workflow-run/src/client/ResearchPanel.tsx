@@ -184,10 +184,9 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   }, [selected.nodeId, selected.memorySnapshot.reviewerRoles])
 
   useEffect(() => {
-    setDirectionWeights(selected.memorySnapshot.directionWeights ?? DEFAULT_DIRECTION_WEIGHTS)
-    setLiteratureSources(selected.memorySnapshot.literatureSources ?? ['web', 'arxiv'])
-    setDirectionFocuses(selected.memorySnapshot.directionFocuses
-      ?? ['method', 'data', 'theory', 'efficiency', 'application'])
+    setDirectionWeights(selected.memorySnapshot.directionWeights)
+    setLiteratureSources(selected.memorySnapshot.literatureSources)
+    setDirectionFocuses(selected.memorySnapshot.directionFocuses)
   }, [
     selected.nodeId,
     selected.memorySnapshot.directionWeights,

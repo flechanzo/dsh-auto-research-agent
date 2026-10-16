@@ -485,7 +485,7 @@ export class ApiSessionAgentController {
     const composition = await this.composeAgent(presetId)
     return (await this.ctx.agents.create({
       sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(true),
       meta: {
         cwd,
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
@@ -494,8 +494,13 @@ export class ApiSessionAgentController {
     })).agent
   }
 
-  private agentOptions(): AgentOptions {
+  private agentOptions(requireRoute = false): AgentOptions {
     const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
+    if (requireRoute && (provider.length === 0 || model.length === 0)) {
+      throw new Error(
+        'api-session: no model route is configured; choose a non-empty provider and model before starting research',
+      )
+    }
     return { provider, model }
   }
 

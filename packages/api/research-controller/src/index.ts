@@ -204,7 +204,7 @@ export class ResearchController extends TypertRemoteService {
   static inject = ['attachments', 'fs', 'sessionController', 'storageDomain', 'subagents', 'typert', 'web']
 
   static Config: z<Config, ResolvedConfig> = z.object({
-    subagentProvider: z.string().default('spawn'),
+    subagentProvider: z.string().min(1).default('spawn'),
     planPath: z.string().default('research-plan.md'),
     maxPaperBytes: z.natural().min(1).default(20 * 1024 * 1024),
     maxLiteratureResults: z.natural().min(1).max(50).default(8),

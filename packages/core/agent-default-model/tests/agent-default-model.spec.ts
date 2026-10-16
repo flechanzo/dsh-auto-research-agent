@@ -17,6 +17,11 @@ it('reads complete selections from volatile config and clears omitted reasoning 
   expect(consumer.currentSelection()).toEqual({ provider: 'p', model: 'm' })
 })
 
+it('rejects an empty provider or model before an Agent can inherit it', () => {
+  expect(() => DefaultModel.Config({ provider: '', model: 'm' })).toThrow()
+  expect(() => DefaultModel.Config({ provider: 'p', model: '' })).toThrow()
+})
+
 it('persists complete selections through its owning profile entry', async () => {
   const { configurationFixture } = await import('../../../settings/settings/tests/configuration-fixture.ts')
   const { ReasoningEffortId } = await import('@deepseek-ai/dsh-llm')

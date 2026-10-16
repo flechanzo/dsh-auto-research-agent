@@ -687,8 +687,17 @@ async function searchArxiv(
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
   const searchQuery = `all:${query} AND (cat:cs.LG OR cat:cs.AI OR cat:cs.CL OR cat:stat.ML)`
-  const url = `https://export.arxiv.org/api/query?search_query=${encodeURIComponent(searchQuery)}&start=0&max_results=${Math.max(1, Math.min(maxResults, 50))}&sortBy=submittedDate&sortOrder=descending`
-  const result = await web.fetch({ url }, signal)
+  const url = `https://arxiv.org/api/query?search_query=${encodeURIComponent(searchQuery)}&start=0&max_results=${Math.max(1, Math.min(maxResults, 50))}&sortBy=submittedDate&sortOrder=descending`
+  let result: Awaited<ReturnType<WebRuntime['fetch']>>
+  try {
+    result = await web.fetch({ url }, signal)
+  } catch {
+    // arXiv is an optional literature backend. Its API can be blocked by a
+    // deployment's public-network policy (or be temporarily unavailable),
+    // and that must not discard results already returned by the main search.
+    signal?.throwIfAborted()
+    return []
+  }
   const xml = result.body.content
   const parsed: ResearchLiteratureSource[] = []
   for (const match of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
