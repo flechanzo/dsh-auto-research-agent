@@ -95,6 +95,37 @@ function latestArtifact(state: ResearchState, node: ResearchNode): ResearchArtif
   return artifactId === undefined ? undefined : state.artifacts[artifactId]
 }
 
+/** Return the selected node's immutable ancestor path in display order. */
+function nodeLineage(state: ResearchState, nodeId: string): readonly ResearchNode[] {
+  const path: ResearchNode[] = []
+  const visited = new Set<string>()
+  let current = state.nodes[nodeId]
+  while (current !== undefined && !visited.has(current.nodeId)) {
+    visited.add(current.nodeId)
+    path.push(current)
+    current = current.parentNodeId === undefined ? undefined : state.nodes[current.parentNodeId]
+  }
+  return path.reverse()
+}
+
+/** Combine the selected branch's recorded nodes with its ancestor path once. */
+function selectedBranchNodes(state: ResearchState, node: ResearchNode): readonly ResearchNode[] {
+  const branch = state.branches[node.branchId]
+  const ids = [
+    ...nodeLineage(state, node.nodeId).map(item => item.nodeId),
+    ...(branch?.nodeIds ?? []),
+  ]
+  const seen = new Set<string>()
+  const result: ResearchNode[] = []
+  for (const id of ids) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    const item = state.nodes[id]
+    if (item !== undefined) result.push(item)
+  }
+  return result
+}
+
 function innovationClaimPasses(artifact: ResearchArtifact | undefined): boolean {
   if (artifact === undefined || artifact.kind !== 'idea') return false
   const text = artifact.content.toLowerCase()
@@ -125,8 +156,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const branch = displayState.branches[displayState.activeBranchId]
   const selectedBranch = displayState.branches[selected.branchId] ?? branch
   const branchNodes = useMemo(
-    () => selectedBranch?.nodeIds.map(id => displayState.nodes[id]).filter(node => node !== undefined) ?? [],
-    [selectedBranch, displayState.nodes],
+    () => selectedBranchNodes(displayState, selected),
+    [selected, selectedBranch, displayState],
   )
   const allBranches = useMemo(
     () => Object.values(displayState.branches).sort((left, right) => left.branchId.localeCompare(
@@ -139,12 +170,19 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
   const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== sessionId
   const canMutate = !isHistorical && !sessionMismatch
-  const canContinue = isHistorical && selected.stage !== 'paper-upload' && selected.stage !== 'final-plan'
+  const canContinue = isHistorical && selected.stage !== 'final-plan'
   const artifact = latestArtifact(displayState, selected)
-  const stageArtifacts = useMemo(() => branchNodes
-    .map(node => ({ node, artifact: latestArtifact(displayState, node) }))
-    .filter((item): item is { node: ResearchNode; artifact: ResearchArtifact } => item.artifact !== undefined),
-  [branchNodes, displayState])
+  const stageArtifacts = useMemo(() => {
+    const seen = new Set<string>()
+    const result: Array<{ readonly node: ResearchNode; readonly artifact: ResearchArtifact }> = []
+    for (const node of branchNodes) {
+      const item = latestArtifact(displayState, node)
+      if (item === undefined || seen.has(item.artifactId)) continue
+      seen.add(item.artifactId)
+      result.push({ node, artifact: item })
+    }
+    return result
+  }, [branchNodes, displayState])
   const ideaNeedsReview = selected.stage === 'idea-generation' || selected.stage === 'idea-refinement'
   const finalPlanArtifact = useMemo(
     () => [...stageArtifacts].reverse().find(item => item.artifact.kind === 'plan')?.artifact,
@@ -271,25 +309,36 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   }
 
   return (
-    <div className={css.root} data-research-panel data-tab-id={tab.id} aria-busy={loading || busy}>
+    <div
+      className={css.root}
+      data-research-panel
+      data-tab-id={tab.id}
+      data-research-selected-node={selected.nodeId}
+      data-research-active-branch={displayState.activeBranchId}
+      aria-busy={loading || busy}
+    >
       <div className={css.header}>
         <span className={css.title}>{t('research.title')}</span>
-        <span className={css.subtle}>{stageText(selected.stage, t)}</span>
+        <span className={css.subtle}>{stageText(selected.stage, t)} · {statusText(selected.status, t)}</span>
       </div>
 
       <div>
         <div className={css.subtle}>{t('research.branch')}</div>
         <div className={css.branchTree} aria-label={t('research.branch')}>
           {allBranches.map(item => (
-            <div key={item.branchId} className={css.branchTreeBranch}>
+            <div key={item.branchId} className={css.branchTreeBranch} data-research-branch={item.branchId}>
               <button
                 type="button"
                 className={item.branchId === displayState.activeBranchId ? `${css.branch} ${css.branchActive}` : css.branch}
                 onClick={() => { selectBranch(item.branchId) }}
                 disabled={busy || item.branchId === displayState.activeBranchId}
+                aria-current={item.branchId === displayState.activeBranchId ? 'true' : undefined}
               >
                 <IconBranchOutlineRegular size={13} /> {item.label}
               </button>
+              {item.forkNodeId !== undefined && (
+                <span className={css.branchFork}>{t('research.forkedFrom', { node: item.forkNodeId })}</span>
+              )}
               <div className={css.branchTreeNodes}>
                 {item.nodeIds.map((nodeId) => {
                   const node = displayState.nodes[nodeId]
@@ -301,8 +350,13 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
                       className={node.nodeId === displayState.selectedNodeId ? `${css.treeNode} ${css.nodeSelected}` : css.treeNode}
                       onClick={() => { selectNode(node.nodeId) }}
                       disabled={busy || node.nodeId === displayState.selectedNodeId}
+                      data-research-node={node.nodeId}
+                      aria-current={node.nodeId === displayState.selectedNodeId ? 'true' : undefined}
                     >
-                      <span>{stageText(node.stage, t)}</span>
+                      <span className={css.treeNodeTitle}>
+                        <span>{stageText(node.stage, t)}</span>
+                        <span className={css.treeNodeArtifact}>{latestArtifact(displayState, node)?.title ?? t('research.emptyArtifact')}</span>
+                      </span>
                       <span className={css.nodeStatus}>{statusText(node.status, t)}</span>
                     </button>
                   )
@@ -323,6 +377,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
               className={node.nodeId === displayState.selectedNodeId ? `${css.node} ${css.nodeSelected}` : css.node}
               onClick={() => { selectNode(node.nodeId) }}
               disabled={busy || node.nodeId === displayState.selectedNodeId}
+              data-research-node={node.nodeId}
             >
               <span className={css.nodeStage}>{stageText(node.stage, t)}</span>
               <span className={css.nodeStatus}>{statusText(node.status, t)}</span>
@@ -331,7 +386,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         </div>
       </div>
 
-      <div className={css.card}>
+      <div className={css.card} data-research-node-content={selected.nodeId}>
         <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
         <pre className={css.content}>{artifact?.content || t('research.emptyArtifact')}</pre>
         {artifact?.evaluation !== undefined && (
@@ -459,7 +514,12 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         <section className={css.transcript} aria-label={t('research.stageContents')}>
           <div className={css.subtle}>{t('research.stageContents')}</div>
           {stageArtifacts.map(({ node, artifact: item }) => (
-            <details key={node.nodeId} open={node.nodeId === selected.nodeId} className={css.transcriptItem}>
+            <details
+              key={node.nodeId}
+              open={node.nodeId === selected.nodeId}
+              className={css.transcriptItem}
+              data-research-task={node.nodeId}
+            >
               <summary>{stageText(node.stage, t)} · {item.title}</summary>
               <pre className={css.content}>{item.content}</pre>
             </details>

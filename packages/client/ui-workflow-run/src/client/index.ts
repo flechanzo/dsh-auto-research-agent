@@ -3,6 +3,8 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionTarget } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-research-controller/client'
+import type {} from '@deepseek-ai/dsh-client-file-upload/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -26,38 +28,49 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services for Definition, keyed renderer, navigation, and copy. */
-export const inject = ['uiConversation', 'uiWorkspace', 'slots', 'sessions', 'locale']
+export const inject = [
+  'uiConversation', 'uiWorkspace', 'slots', 'sessions', 'locale',
+  'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.research', 'fileUpload',
+]
 
 /** Register the workflow Definition, dictionary, and keyed Chat renderer. */
 export function apply(ctx: ClientContext): void {
   ctx.uiConversation.events.register(workflowRunDefinition)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workflow-run: dictionaries')
   const t = ctx.locale.bind(NS)
-  const sidebarTabs = ctx.get('sidebarRightTabs')
-  const sidebar = ctx.get('sidebarRight')
-  if (sidebarTabs !== undefined && sidebar !== undefined) {
-    ctx.effect(() => sidebarTabs.register(researchDefinition(t)), 'ui-workflow-run: research tab type')
-    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+  ctx.effect(() => ctx.sidebarRightTabs.register(researchDefinition(t)), 'ui-workflow-run: research tab type')
+  ctx.effect(
+    () => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab', key: RESEARCH_ID, locale: NS,
       inject: (): ResearchPanelInjected => ({
         research: ctx.remote.research,
         fileUpload: ctx.fileUpload,
       }),
-    }, ResearchPanel))
-    ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
+    }, ResearchPanel)),
+    'ui-workflow-run: research tab body',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab.title', key: RESEARCH_ID, locale: NS,
-    }, ResearchTitle))
-    ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    }, ResearchTitle)),
+    'ui-workflow-run: research tab title',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
       name: 'conversation.session.header.actions', id: 'research-workflow', order: 30, locale: NS,
-      inject: (): ResearchActionInjected => ({ open: () => { sidebar.openTab(RESEARCH_KIND) } }),
-    }, ResearchAction))
-  }
-  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
-    name: 'conversation.chat.node',
-    key: 'workflow-run',
-    locale: NS,
-    inject: (): WorkflowRunInjected => ({
-      openSession: (target: SessionTarget) => { ctx.uiWorkspace.openSession(target) },
-    }),
-  }, WorkflowRunPanel))
+      inject: (): ResearchActionInjected => ({ open: () => { ctx.sidebarRight.openTab(RESEARCH_KIND) } }),
+    }, ResearchAction)),
+    'ui-workflow-run: research header action',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+      name: 'conversation.chat.node',
+      key: 'workflow-run',
+      locale: NS,
+      inject: (): WorkflowRunInjected => ({
+        openSession: (target: SessionTarget) => { ctx.uiWorkspace.openSession(target) },
+      }),
+    }, WorkflowRunPanel)),
+    'ui-workflow-run: workflow node',
+  )
 }

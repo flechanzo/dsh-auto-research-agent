@@ -2,7 +2,7 @@
 
 English | [中文](auto-research-progress.zh.md)
 
-Owner: Auto research workflow · Created: 2026-10-13 · Updated: 2026-10-16 · Expires: 2026-11-13 · Promotion target: the research workflow package and Web UI README pages
+Owner: Auto research workflow · Created: 2026-10-13 · Updated: 2026-10-17 · Expires: 2026-11-13 · Promotion target: the research workflow package and Web UI README pages
 
 This temporary page records the implementation checkpoints for the human-in-the-loop research workflow. Each checkpoint is committed and pushed to `flechanzo/dsh-auto-research-agent` before the next one starts.
 
@@ -17,6 +17,7 @@ This temporary page records the implementation checkpoints for the human-in-the-
 - **Agent selector entry — current UI fix complete.** The new-session hero now labels the existing preset control as `Agent`, and the Web bundle ships an `Auto research agent` preset. Selecting it gives the agent the research workflow prompt and keeps the existing paper, web-search, subagent, review, and plan tools available.
 - **Multi-source literature and innovation review — current checkpoint complete.** Literature searches can combine the general Web backend with arXiv's machine-learning categories (`cs.LG`, `cs.AI`, `cs.CL`, and `stat.ML`), de-duplicate URLs, and carry the selected sources into the second targeted search. The problem-summary checkpoint exposes novelty, impact, feasibility, and reproducibility weights. Every generated or refined idea is evaluated by a fresh `innovation-reviewer` child using only the candidate and supplied literature evidence; candidates below the configured score threshold or marked as overlapping prior work are discarded and retried up to the configured limit. Passing artifacts retain the score, threshold, overlap result, and rationale for the UI and final plan.
 - **Same-panel interaction fixes — current checkpoint complete.** One file selection can upload several papers for one comparative reading stage. The right Sidebar displays the complete branch tree and expandable content for every stage, offers multi-select direction focus areas, and renders the final plan from the selected branch artifact after it is written. Continuing from an earlier node creates a branch in the current Session, keeps that node's memory, and does not reopen the left conversation list.
+- **Research Sidebar registration — current checkpoint complete.** The workflow now waits for the right Sidebar, research Remote, and upload services before registering its tab type, body, title, header action, and workflow-node slots. Every registration is reversible, and stable task/node markers expose the selected node, active branch, task artifact title, and complete lineage in the same panel.
 - **Multi-question extraction — current checkpoint complete.** Problem extraction asks for every distinct testable question and gap in numbered form, keeps separate answers separate, and ends with a synthesis for downstream literature search and idea generation.
 
 ## Verification evidence

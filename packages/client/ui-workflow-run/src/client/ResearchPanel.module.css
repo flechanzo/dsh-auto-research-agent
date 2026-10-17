@@ -84,6 +84,12 @@
   padding: 5px 8px;
 }
 
+.branchFork {
+  padding-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
 .treeNode {
   display: flex;
   align-items: baseline;
@@ -99,6 +105,21 @@
   font: inherit;
   font-size: 12px;
   text-align: left;
+}
+
+.treeNodeTitle {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.treeNodeArtifact {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .treeNode:hover {

@@ -904,6 +904,12 @@ describe('plugin lifecycle', () => {
     await ctx.plugin(SlotRegistry).await()
     ctx.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
     ctx.provide('remote', { $on: () => () => {} } as never)
+    ctx.provide('remote.research', {} as never)
+    ctx.provide('fileUpload', {} as never)
+    const registerSidebarTab = vi.fn(() => () => {})
+    const openSidebarTab = vi.fn()
+    ctx.provide('sidebarRightTabs', { register: registerSidebarTab } as never)
+    ctx.provide('sidebarRight', { openTab: openSidebarTab } as never)
     ctx.provide('configForms', { developerTools: { enabled: createSnapshotStore(true) }, get: () => stubConfigForm().scope } as never)
     const sessions = new TestSessions(async (action) => { await action() }, ctx)
     ctx.provide('sessions', sessions)
@@ -912,13 +918,22 @@ describe('plugin lifecycle', () => {
     const conversationEvents = new UiConversation(ctx, ctx.sessions).events
     ctx.slots.register({
       name: 'root',
-      children: { 'conversation.chat.node': { kind: 'keyed', scope: 'session' } },
+      children: {
+        'conversation.chat.node': { kind: 'keyed', scope: 'session' },
+        'conversation.session.header.actions': { kind: 'list', scope: 'session' },
+        'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
+        'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
+      },
     } as never, () => null)
     await ctx.plugin({ inject: localeInject, apply: applyLocale }).await()
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     expect(conversationEvents.entries().map(entry => entry.kind)).toEqual(['workflow-run'])
     expect(ctx.slots.entries('conversation.chat.node')).toHaveLength(1)
+    expect(registerSidebarTab).toHaveBeenCalledOnce()
+    expect(ctx.slots.entries('sidebar.right.pane.tab')).toHaveLength(1)
+    expect(ctx.slots.entries('sidebar.right.pane.tab.title')).toHaveLength(1)
+    expect(ctx.slots.entries('conversation.session.header.actions')).toHaveLength(1)
     const entry = ctx.slots.entries('conversation.chat.node')[0]!
     const face = entry.inject?.() as unknown as WorkflowRunInjected
     face.openSession(CHILD_ID)
@@ -926,11 +941,15 @@ describe('plugin lifecycle', () => {
     await fiber.dispose()
     expect(conversationEvents.entries()).toEqual([])
     expect(ctx.slots.entries('conversation.chat.node')).toEqual([])
+    expect(ctx.slots.entries('sidebar.right.pane.tab')).toEqual([])
+    expect(ctx.slots.entries('sidebar.right.pane.tab.title')).toEqual([])
+    expect(ctx.slots.entries('conversation.session.header.actions')).toEqual([])
 
     const replacement = ctx.plugin({ inject: [...inject], apply })
     await replacement.await()
     expect(conversationEvents.entries().map(entry => entry.kind)).toEqual(['workflow-run'])
     expect(ctx.slots.entries('conversation.chat.node')).toHaveLength(1)
+    expect(ctx.slots.entries('sidebar.right.pane.tab')).toHaveLength(1)
     await replacement.dispose()
   })
 
