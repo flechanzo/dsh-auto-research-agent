@@ -58,7 +58,11 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(
     () => ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
       name: 'conversation.session.header.actions', id: 'research-workflow', order: 30, locale: NS,
-      inject: (): ResearchActionInjected => ({ open: () => { ctx.sidebarRight.openTab(RESEARCH_KIND) } }),
+      inject: (sessionId): ResearchActionInjected => ({
+        open: () => {
+          ctx.sidebarRight.openTab(RESEARCH_KIND, { params: { sessionId } })
+        },
+      }),
     }, ResearchAction)),
     'ui-workflow-run: research header action',
   )

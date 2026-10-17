@@ -1,10 +1,18 @@
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 
 /** Page kind used by the research workflow right-sidebar tab. */
 export const RESEARCH_KIND = 'research-workflow'
 /** Stable registration identity for the research workflow tab. */
 export const RESEARCH_ID = '@deepseek-ai/dsh-client-ui-workflow-run/research'
+
+declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
+  interface SidebarRightTabParamsMap {
+    /** Session whose research DAG the tab must display. */
+    [RESEARCH_KIND]: { readonly sessionId: SessionId }
+  }
+}
 
 /** Define the page tab and expose it in the Sidebar guide.
  * @param t - Translator for the workflow UI namespace.

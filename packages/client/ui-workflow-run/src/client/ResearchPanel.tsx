@@ -139,6 +139,10 @@ function failureText(failure: { readonly message: string; readonly code: string 
 /** Render the staged research workflow, its branches, artifacts, and checkpoints. */
 export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }: ResearchPanelProps): ReactNode {
   const { tab } = useTabInfo()
+  const navigationParams = tab.navigation.params
+  const workflowSessionId = navigationParams !== undefined && 'sessionId' in navigationParams
+    ? navigationParams.sessionId
+    : sessionId
   const [state, setState] = useState<ResearchState>()
   const [revision, setRevision] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -168,7 +172,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     [displayState.branches],
   )
   const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
-  const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== sessionId
+  const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== workflowSessionId
   const canMutate = !isHistorical && !sessionMismatch
   const canContinue = isHistorical && selected.stage !== 'final-plan'
   const artifact = latestArtifact(displayState, selected)
@@ -197,7 +201,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       setState(undefined)
       setRevision(0)
       try {
-        const result = await research.read({ sessionId })
+        const result = await research.read({ sessionId: workflowSessionId })
         if (disposed) return
         if (result.ok) {
           setRevision(result.value.revision)
@@ -213,7 +217,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     }
     void load()
     return () => { disposed = true }
-  }, [research, sessionId, t])
+  }, [research, workflowSessionId, t])
 
   useEffect(() => {
     setReviewers(selected.memorySnapshot.reviewerRoles.length > 0
@@ -244,7 +248,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       }
       // A historical continuation stays in this Session so the panel can keep
       // the branch tree and all later nodes visible while editing the fork.
-      if (result.value.snapshot.sessionId === sessionId) {
+      if (result.value.snapshot.sessionId === workflowSessionId) {
         setRevision(result.value.snapshot.revision)
         setState(result.value.snapshot.state)
       }
@@ -264,17 +268,17 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     void execute(async () => {
       const papers = []
       for (const file of files) {
-        const uploaded = await fileUpload.upload(sessionId, file, file.name, tab.signal)
+        const uploaded = await fileUpload.upload(workflowSessionId, file, file.name, tab.signal)
         if (!uploaded.ok) return uploaded
         papers.push(uploaded.value.file)
       }
-      return research.upload({ sessionId, expectedRevision: revision, papers }, tab.signal)
+      return research.upload({ sessionId: workflowSessionId, expectedRevision: revision, papers }, tab.signal)
     })
   }
 
   const confirm = (): void => {
     void execute(() => research.confirm({
-      sessionId, expectedRevision: revision,
+      sessionId: workflowSessionId, expectedRevision: revision,
       ...(selected.stage === 'targeted-literature-search' ? { reviewerRoles: reviewers } : {}),
       ...(selected.stage === 'problem-summary' ? { directionWeights, literatureSources } : {}),
       ...(selected.stage === 'problem-summary' ? { directionFocuses } : {}),
@@ -284,28 +288,28 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
 
   const submitFeedback = (): void => {
     if (feedback.trim() === '') return
-    void execute(() => research.feedback({ sessionId, expectedRevision: revision, feedback })).then((success) => {
+    void execute(() => research.feedback({ sessionId: workflowSessionId, expectedRevision: revision, feedback })).then((success) => {
       if (success !== undefined) setFeedback('')
     })
   }
 
   const reject = (): void => {
     void execute(() => research.reject({
-      sessionId, expectedRevision: revision,
+      sessionId: workflowSessionId, expectedRevision: revision,
       ...(feedback.trim() === '' ? {} : { reason: feedback }),
     }, tab.signal))
   }
 
   const selectBranch = (branchId: string): void => {
-    void execute(() => research.selectBranch({ sessionId, expectedRevision: revision, branchId }))
+    void execute(() => research.selectBranch({ sessionId: workflowSessionId, expectedRevision: revision, branchId }))
   }
 
   const selectNode = (nodeId: string): void => {
-    void execute(() => research.selectNode({ sessionId, expectedRevision: revision, nodeId }))
+    void execute(() => research.selectNode({ sessionId: workflowSessionId, expectedRevision: revision, nodeId }))
   }
 
   const continueFromNode = (nodeId: string): void => {
-    void execute(() => research.continueFromNode({ sessionId, expectedRevision: revision, nodeId }))
+    void execute(() => research.continueFromNode({ sessionId: workflowSessionId, expectedRevision: revision, nodeId }))
   }
 
   return (
@@ -320,6 +324,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       <div className={css.header}>
         <span className={css.title}>{t('research.title')}</span>
         <span className={css.subtle}>{stageText(selected.stage, t)} · {statusText(selected.status, t)}</span>
+        <span className={css.subtle}>{t('research.workspace', { path: `research-projects/${String(workflowSessionId)}` })}</span>
       </div>
 
       <div>

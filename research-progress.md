@@ -14,6 +14,7 @@ Updated: 2026-10-17
 - Literature searches now combine selectable Web and arXiv machine-learning sources, de-duplicate citations, and repeat the selected sources after direction confirmation. Direction weights for novelty, impact, feasibility, and reproducibility are captured in branch memory and included in idea prompts.
 - Generated and refined ideas now pass an isolated `innovation-reviewer` JSON evaluation. Candidates below the configured threshold or marked as overlapping cited work are discarded and retried; accepted artifacts expose the score, threshold, overlap result, and rationale in the UI.
 - The current Web panel accepts multiple papers in one file selection, shows the full branch tree and every stage artifact in the same right Sidebar, supports multi-select research focus areas, and renders the final Markdown from the selected branch's plan artifact before and after persistence.
+- Each advancing research Session now creates `research-projects/<sessionId>` below the Session cwd. The project keeps `research-conversation.md`, `research-state.json`, and the final `research-plan.md`; later stage writes preserve the original uploaded-paper list, and the Sidebar opens against the active Session's state.
 - The automatic research Sidebar now waits for `sidebarRightTabs`, `sidebarRight`, the research Remote, and the upload service before registering. Its body, title, header action, and workflow-node slots are registered as reversible effects, so the `自动科研流程` action opens a populated panel instead of an empty Sidebar.
 - The panel marks every research node and task output with stable DOM identities, shows each task's artifact title in the branch tree, keeps the selected node's lineage and later branch nodes visible, and exposes the selected node's complete output for inspection before creating a same-panel continuation branch.
 - The research preset now waits for each delegated child result, disables child model-route overrides, and keeps the parent Session's exact route (including GPT-6 Astra). A failure from the general Web search backend no longer discards arXiv results; source fetch failures remain isolated.
@@ -26,11 +27,11 @@ Updated: 2026-10-17
 
 ## Current milestone
 
-- The current milestone is implementing the approved same-panel task and branch navigation update. Sidebar registration, stable task/node markers, lineage-aware stage history, and explicit registration lifecycle coverage are complete; final browser interaction verification remains.
+- The approved same-panel task and branch navigation update is implemented. Completed answers remain visible, the Sidebar receives the active Session identity, and the per-Session project directory is written through the injected filesystem. Final browser interaction verification remains.
 - The installed build exposes the workflow from the Session header's `自动科研流程` action and the right Sidebar.
 - On a new session, choose `Agent: 自动科研智能体` from the preset dropdown before sending the first message.
 - The Web profile loads `research-controller` successfully; paper upload, confirmation, feedback, branch, history, and plan commands are wired through the Session-scoped Remote.
-- Verification: the focused workflow UI suite passes (33 tests), the panel style suite passes (3 tests), the workflow UI TypeScript check passes, and the workflow UI bundle builds. Documentation gates, a browser smoke run, and the repository Host build remain the next publication checks for this checkpoint.
+- Verification: the focused workflow UI suite passes (39 tests), `pnpm run typecheck` passes, and the repository Host/client build completes. Documentation gates and a browser smoke run remain the next publication checks for this checkpoint.
 - The aggregate hygiene run still reports the Windows NodeNext temporary-symlink privilege limitation and the pre-existing `apps/cli/tests/profiles/acp/cordis.yml` Loader-shape failure; neither is introduced by this milestone.
 
 ## Next work after confirmation

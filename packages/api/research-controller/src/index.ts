@@ -5,6 +5,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { isAbsolute, join, normalize, sep } from 'node:path'
+import { FsError, type FileSystem, type FsTarget } from '@deepseek-ai/dsh-fs'
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain'
 import { createHostResearchCoordinator, type ResearchAdvanceResult } from '@deepseek-ai/dsh-workflow'
 import {
@@ -170,6 +172,20 @@ export const researchDomain = defineDomain({
   tables: { sessions: domainTable<SessionId, ResearchRecord>(researchRecord) },
 })
 
+/** Fixed root below each Session cwd for automatic-research project files. */
+const RESEARCH_PROJECT_ROOT = 'research-projects'
+
+/** Validate the configured plan path before it is joined to a project root. */
+function validatePlanPath(planPath: string): void {
+  if (planPath.trim().length === 0 || isAbsolute(planPath)) {
+    throw new TypeError('research planPath must be a non-empty relative path')
+  }
+  const normalized = normalize(planPath)
+  if (normalized === '.' || normalized === '..' || normalized.startsWith(`..${sep}`)) {
+    throw new TypeError('research planPath must stay inside the project directory')
+  }
+}
+
 /** Persisted research row inferred from the durable schema. */
 export type ResearchRecord = zod.infer<typeof researchRecord>
 
@@ -177,7 +193,7 @@ export type ResearchRecord = zod.infer<typeof researchRecord>
 export interface Config {
   /** Registered subagent provider used for summarization, ideation, and review. */
   readonly subagentProvider?: string
-  /** Relative output path inside the Session workspace. */
+  /** Relative output path inside the automatic-research project directory. */
   readonly planPath?: string
   /** Maximum uploaded paper bytes read into the summarizer prompt. */
   readonly maxPaperBytes?: number
@@ -227,6 +243,7 @@ export class ResearchController extends TypertRemoteService {
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'researchController', { namespace: 'research' })
     this.config = ResearchController.Config(config)
+    validatePlanPath(this.config.planPath)
     this.ready = ctx.storageDomain.open(researchDomain)
     ctx.effect(() => async () => { await this.chain; await (await this.ready).close() }, 'research-controller.domain')
   }
@@ -289,6 +306,7 @@ export class ResearchController extends TypertRemoteService {
       const current = await this.current(request.sessionId, request.expectedRevision)
       this.requireActiveTail(current.state, request.sessionId)
       const state = addResearchFeedback(current.state, request.feedback)
+      await this.persistProjectRecord(request.sessionId, state)
       return this.commit(request.sessionId, current.revision, state)
     })
   }
@@ -315,7 +333,9 @@ export class ResearchController extends TypertRemoteService {
   selectBranch(request: ResearchSelectBranchRequest): Promise<ResearchCommandValue> {
     return this.serialize(async () => {
       const current = await this.current(request.sessionId, request.expectedRevision)
-      return this.commit(request.sessionId, current.revision, selectResearchBranch(current.state, request.branchId))
+      const state = selectResearchBranch(current.state, request.branchId)
+      await this.persistProjectRecord(request.sessionId, state)
+      return this.commit(request.sessionId, current.revision, state)
     })
   }
 
@@ -328,7 +348,9 @@ export class ResearchController extends TypertRemoteService {
   selectNode(request: ResearchSelectNodeRequest): Promise<ResearchCommandValue> {
     return this.serialize(async () => {
       const current = await this.current(request.sessionId, request.expectedRevision)
-      return this.commit(request.sessionId, current.revision, selectResearchNode(current.state, request.nodeId))
+      const state = selectResearchNode(current.state, request.nodeId)
+      await this.persistProjectRecord(request.sessionId, state)
+      return this.commit(request.sessionId, current.revision, state)
     })
   }
 
@@ -341,11 +363,9 @@ export class ResearchController extends TypertRemoteService {
   continueFromNode(request: ResearchContinueRequest): Promise<ResearchCommandValue> {
     return this.serialize(async () => {
       const current = await this.current(request.sessionId, request.expectedRevision)
-      return this.commit(
-        request.sessionId,
-        current.revision,
-        this.continueResearchNodeInCurrentSession(current.state, request.nodeId, request.sessionId),
-      )
+      const state = this.continueResearchNodeInCurrentSession(current.state, request.nodeId, request.sessionId)
+      await this.persistProjectRecord(request.sessionId, state)
+      return this.commit(request.sessionId, current.revision, state)
     })
   }
 
@@ -386,6 +406,7 @@ export class ResearchController extends TypertRemoteService {
       }
       const branchState = continueFromResearchNode(current.state, request.nodeId)
       if (source.sessionSeq === undefined) {
+        await this.persistProjectRecord(request.sessionId, branchState)
         return this.commit(request.sessionId, current.revision, branchState)
       }
       const sourceSessionId = researchSourceSessionId(source, request.sessionId)
@@ -398,6 +419,7 @@ export class ResearchController extends TypertRemoteService {
       await (await this.ready).table('sessions').put(fork.sessionId, {
         revision: childRevision, state: forkedState, updatedAt: Date.now(),
       })
+      await this.persistProjectRecord(fork.sessionId, forkedState)
       return {
         snapshot: { sessionId: fork.sessionId, revision: childRevision, state: forkedState },
       }
@@ -419,14 +441,17 @@ export class ResearchController extends TypertRemoteService {
     this.requireActiveTail(current.state, sessionId)
     const prepared = prepare(current.state)
     const agent = await this.agent(sessionId)
+    const project = this.ensureProject(agent, sessionId)
+    const planPath = project === undefined ? this.config.planPath : join(project.path, this.config.planPath)
+    const fs = agent.ctx.get('fs') ?? this.ctx.fs
     const coordinator = createHostResearchCoordinator({
       attachments: this.ctx.attachments,
       web: this.ctx.web,
       subagents: this.ctx.subagents,
-      fs: agent.ctx.get('fs') ?? this.ctx.fs,
+      fs,
     }, {
       subagentProvider: this.config.subagentProvider,
-      planPath: this.config.planPath,
+      planPath,
       maxPaperBytes: this.config.maxPaperBytes,
       maxLiteratureResults: this.config.maxLiteratureResults,
       maxPdfPages: this.config.maxPdfPages,
@@ -447,7 +472,108 @@ export class ResearchController extends TypertRemoteService {
     const state = lastEventSeq < 0
       ? result.state
       : markResearchSessionBoundary(result.state, lastEventSeq, sessionId)
+    if (project !== undefined) {
+      const papers = prepared.papers ?? (prepared.paper === undefined ? undefined : [prepared.paper])
+      await this.writeProjectRecord(fs, project.path, sessionId, papers, state)
+    }
     return this.commit(sessionId, current.revision, state, { ...result, state })
+  }
+
+  /**
+   * Resolve the stable on-disk project directory for one research Session.
+   * @param agent - Session Agent whose cwd owns the project directory.
+   * @param sessionId - Session identity used for the directory leaf.
+   * @returns the project path, or undefined for a Session without a cwd.
+   */
+  private ensureProject(agent: Agent, sessionId: SessionId): { readonly path: string } | undefined {
+    const cwd = agent.session.header.cwd
+    if (cwd === undefined) return undefined
+    const leaf = String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = join(cwd, RESEARCH_PROJECT_ROOT, leaf)
+    return { path }
+  }
+
+  /**
+   * Persist the visible research history beside the Session workspace.
+   * @param fs - Session filesystem provider.
+   * @param projectPath - Fixed project directory for this research Session.
+   * @param sessionId - Session identity written into the manifest.
+   * @param papers - Uploaded paper references shown in the manifest.
+   * @param state - Complete immutable research DAG after the step.
+   */
+  private async writeProjectRecord(
+    fs: FileSystem,
+    projectPath: string,
+    sessionId: SessionId,
+    papers: readonly FileAttachmentRef[] | undefined,
+    state: ResearchState,
+  ): Promise<void> {
+    const recordPath = await fs.resolve(join(projectPath, 'research-conversation.md'))
+    const paperEntries = papers === undefined
+      ? await this.previousPaperEntries(fs, recordPath)
+      : papers.map(paper => `- ${paper.name} (${paper.bytes} bytes, ${paper.attachmentId})`)
+    const manifest = [
+      '# 自动科研项目',
+      '',
+      `- Session: ${sessionId}`,
+      `- 工作区: ${projectPath}`,
+      '',
+      '## 上传论文',
+      '',
+      ...(paperEntries.length === 0 ? ['暂无附件。'] : paperEntries),
+      '',
+      '## 阶段输出',
+      '',
+      ...Object.values(state.nodes)
+        .sort((left, right) =>
+          (left.sessionSeq ?? Number.MAX_SAFE_INTEGER) - (right.sessionSeq ?? Number.MAX_SAFE_INTEGER))
+        .flatMap(node => node.artifactRefs
+          .map(id => state.artifacts[id])
+          .filter((artifact): artifact is ResearchArtifact => artifact !== undefined)
+          .map(artifact => `### ${artifact.title}\n\n${artifact.content}`)),
+      '',
+    ].join('\n')
+    await fs.writeText(recordPath, manifest)
+    const stateFile = await fs.resolve(join(projectPath, 'research-state.json'))
+    await fs.writeText(stateFile, JSON.stringify(state, null, 2))
+  }
+
+  /**
+   * Keep the paper list when a later state update has no new upload payload.
+   * @param fs - Session filesystem provider.
+   * @param recordPath - Existing or future conversation manifest target.
+   * @returns Existing paper list entries, or an empty list when no manifest exists.
+   */
+  private async previousPaperEntries(fs: FileSystem, recordPath: FsTarget): Promise<readonly string[]> {
+    let previous: string
+    try {
+      previous = await fs.readText(recordPath)
+    } catch (error) {
+      // The first project write has no prior manifest; unrelated filesystem errors must remain visible.
+      if (error instanceof FsError && error.code === 'FS_NOT_FOUND') return []
+      throw error
+    }
+    const section = previous.split('## 上传论文', 2)[1]?.split('## 阶段输出', 2)[0]
+    if (section === undefined) return []
+    return section.split(/\r?\n/u).map(line => line.trim()).filter(line => line.startsWith('- '))
+  }
+
+  /**
+   * Synchronize the project files after a state-only research command.
+   * @param sessionId - Session whose project directory receives the record.
+   * @param state - Updated immutable research DAG.
+   * @param papers - New paper references, when this command uploaded papers.
+   */
+  private async persistProjectRecord(
+    sessionId: SessionId,
+    state: ResearchState,
+    papers?: readonly FileAttachmentRef[],
+  ): Promise<void> {
+    const agent = await this.agent(sessionId)
+    const project = this.ensureProject(agent, sessionId)
+    if (project === undefined) return
+    const fs = agent.ctx.get('fs') ?? this.ctx.fs
+    await this.writeProjectRecord(fs, project.path, sessionId, papers, state)
   }
 
   private async agent(sessionId: SessionId): Promise<Agent> {

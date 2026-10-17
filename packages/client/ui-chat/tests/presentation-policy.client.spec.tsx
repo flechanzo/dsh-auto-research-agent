@@ -10,9 +10,9 @@ afterEach(cleanup)
 
 describe('Chat presentation policy', () => {
   it.each([
-    ['compact', true, 'collapsed', false, false],
-    ['standard', true, 'collapsed', true, true],
-    ['detailed', true, 'history', true, true],
+    ['compact', false, 'collapsed', false, false],
+    ['standard', false, 'collapsed', true, true],
+    ['detailed', false, 'history', true, true],
     ['verbose', false, 'none', true, false],
   ] as const)('maps %s to stable presentation capabilities', (mode, foldCompletedTurns, stepGrouping, settledReasoningPreview, liveProcessDetail) => {
     const policy = presentationPolicyFor(mode)

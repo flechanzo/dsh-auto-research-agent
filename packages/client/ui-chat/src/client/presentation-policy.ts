@@ -24,21 +24,23 @@ export interface ChatPresentationPolicy {
 const POLICIES: Readonly<Record<TranscriptViewMode, ChatPresentationPolicy>> = {
   compact: {
     mode: 'compact',
-    foldCompletedTurns: true,
+    // Completed answers stay mounted so a later turn never hides the
+    // response the user just reviewed. Process details can still be grouped.
+    foldCompletedTurns: false,
     stepGrouping: 'collapsed',
     liveProcessDetail: false,
     settledReasoningPreview: false,
   },
   standard: {
     mode: 'standard',
-    foldCompletedTurns: true,
+    foldCompletedTurns: false,
     stepGrouping: 'collapsed',
     liveProcessDetail: true,
     settledReasoningPreview: true,
   },
   detailed: {
     mode: 'detailed',
-    foldCompletedTurns: true,
+    foldCompletedTurns: false,
     stepGrouping: 'history',
     liveProcessDetail: true,
     settledReasoningPreview: true,
