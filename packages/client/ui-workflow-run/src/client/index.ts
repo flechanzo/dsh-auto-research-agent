@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { WorkflowRunPanel, type WorkflowRunInjected } from './WorkflowRunPanel.tsx'
 import { ResearchPanel, type ResearchPanelInjected } from './ResearchPanel.tsx'
+import { ResearchTranscriptDock, type ResearchTranscriptInjected } from './ResearchTranscriptDock.tsx'
 import { ResearchTitle } from './ResearchTitle.tsx'
 import { ResearchAction, type ResearchActionInjected } from './ResearchAction.tsx'
 import { researchDefinition, RESEARCH_ID, RESEARCH_KIND } from './research-definition.ts'
@@ -48,6 +49,18 @@ export function apply(ctx: ClientContext): void {
       }),
     }, ResearchPanel)),
     'ui-workflow-run: research tab body',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+      name: 'conversation.composer.dock', id: 'research-transcript', order: 20, locale: NS,
+      inject: (): ResearchTranscriptInjected => ({
+        research: ctx.remote.research,
+        openPanel: (selectedSessionId) => {
+          ctx.sidebarRight.openTab(RESEARCH_KIND, { params: { sessionId: selectedSessionId } })
+        },
+      }),
+    }, ResearchTranscriptDock)),
+    'ui-workflow-run: research center transcript',
   )
   ctx.effect(
     () => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({

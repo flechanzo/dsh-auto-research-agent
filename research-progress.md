@@ -15,6 +15,8 @@ Updated: 2026-10-17
 - Generated and refined ideas now pass an isolated `innovation-reviewer` JSON evaluation. Candidates below the configured threshold or marked as overlapping cited work are discarded and retried; accepted artifacts expose the score, threshold, overlap result, and rationale in the UI.
 - The current Web panel accepts multiple papers in one file selection, shows the full branch tree and every stage artifact in the same right Sidebar, supports multi-select research focus areas, and renders the final Markdown from the selected branch's plan artifact before and after persistence.
 - Each advancing research Session now creates `research-projects/<sessionId>` below the Session cwd. The project keeps `research-conversation.md`, `research-state.json`, and the final `research-plan.md`; later stage writes preserve the original uploaded-paper list, and the Sidebar opens against the active Session's state.
+- Project and final-plan writes now pass the resolved Session sandbox policy, falling back to the root Context provider when an Agent scope does not expose it. This prevents the upload or final write from failing with a false file-access denial under `workspace-write`.
+- The center composer now renders a research transcript dock backed by the same revision-ordered Session store as the right Sidebar. Stage progress, selected node, timeline, and artifact content update together; older reads cannot overwrite a newer command result.
 - The automatic research Sidebar now waits for `sidebarRightTabs`, `sidebarRight`, the research Remote, and the upload service before registering. Its body, title, header action, and workflow-node slots are registered as reversible effects, so the `自动科研流程` action opens a populated panel instead of an empty Sidebar.
 - The panel marks every research node and task output with stable DOM identities, shows each task's artifact title in the branch tree, keeps the selected node's lineage and later branch nodes visible, and exposes the selected node's complete output for inspection before creating a same-panel continuation branch.
 - The research preset now waits for each delegated child result, disables child model-route overrides, and keeps the parent Session's exact route (including GPT-6 Astra). A failure from the general Web search backend no longer discards arXiv results; source fetch failures remain isolated.
@@ -27,11 +29,11 @@ Updated: 2026-10-17
 
 ## Current milestone
 
-- The approved same-panel task and branch navigation update is implemented. Completed answers remain visible, the Sidebar receives the active Session identity, and the per-Session project directory is written through the injected filesystem. Final browser interaction verification remains.
+- The approved same-panel task and branch navigation update is implemented. Completed answers remain visible, the Sidebar receives the active Session identity, the center composer mirrors the same research state, and the per-Session project directory is written through the injected filesystem with its resolved sandbox policy. Final browser interaction verification remains.
 - The installed build exposes the workflow from the Session header's `自动科研流程` action and the right Sidebar.
 - On a new session, choose `Agent: 自动科研智能体` from the preset dropdown before sending the first message.
 - The Web profile loads `research-controller` successfully; paper upload, confirmation, feedback, branch, history, and plan commands are wired through the Session-scoped Remote.
-- Verification: the focused workflow UI suite passes (39 tests), `pnpm run typecheck` passes, and the repository Host/client build completes. Documentation gates and a browser smoke run remain the next publication checks for this checkpoint.
+- Verification: the focused workflow UI suite passes (39 tests), the shared research-session-store suite passes (2 tests), the coordinator suite passes (16 tests), affected Host/Client TypeScript projects compile, and the repository Host/client build completes. Documentation gates and a browser smoke run remain the next publication checks for this checkpoint.
 - The aggregate hygiene run still reports the Windows NodeNext temporary-symlink privilege limitation and the pre-existing `apps/cli/tests/profiles/acp/cordis.yml` Loader-shape failure; neither is introduced by this milestone.
 
 ## Next work after confirmation

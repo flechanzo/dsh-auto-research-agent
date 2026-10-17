@@ -15,6 +15,12 @@ import type {
 import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkflowRunKey } from './locales.ts'
+import {
+  loadResearchSession,
+  publishResearchSession,
+  researchSessionSnapshot,
+  subscribeResearchSession,
+} from './research-session-store.ts'
 import css from './ResearchPanel.module.css'
 
 /** Props for the session-scoped right-sidebar page. */
@@ -194,14 +200,21 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   )
 
   useEffect(() => {
+    const unsubscribe = subscribeResearchSession(workflowSessionId, () => {
+      const snapshot = researchSessionSnapshot(workflowSessionId)
+      if (snapshot === undefined) return
+      setRevision(snapshot.revision)
+      setState(snapshot.state)
+    })
     let disposed = false
     const load = async (): Promise<void> => {
+      const existing = researchSessionSnapshot(workflowSessionId)
       setLoading(true)
       setError(undefined)
-      setState(undefined)
-      setRevision(0)
+      setState(existing?.state)
+      setRevision(existing?.revision ?? 0)
       try {
-        const result = await research.read({ sessionId: workflowSessionId })
+        const result = await loadResearchSession(research, workflowSessionId, tab.signal)
         if (disposed) return
         if (result.ok) {
           setRevision(result.value.revision)
@@ -216,8 +229,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       }
     }
     void load()
-    return () => { disposed = true }
-  }, [research, workflowSessionId, t])
+    return () => { disposed = true; unsubscribe() }
+  }, [research, tab.signal, workflowSessionId, t])
 
   useEffect(() => {
     setReviewers(selected.memorySnapshot.reviewerRoles.length > 0
@@ -251,6 +264,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       if (result.value.snapshot.sessionId === workflowSessionId) {
         setRevision(result.value.snapshot.revision)
         setState(result.value.snapshot.state)
+        publishResearchSession(workflowSessionId, result.value.snapshot)
       }
       return result.value
     } catch {

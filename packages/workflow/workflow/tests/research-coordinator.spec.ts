@@ -5,6 +5,7 @@ import {
   appendResearchOutput,
   confirmResearchNode,
   createAttachmentPaperReader,
+  createHostResearchCoordinator,
   createWebLiteratureSearcher,
   createResearchState,
   rejectIdea,
@@ -12,7 +13,10 @@ import {
   type ResearchCoordinatorAdapters,
 } from '../src/index.ts'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { FileSystem, FsTargetKey, FsVersion, type FsTarget, type FsWriteIntent } from '@deepseek-ai/dsh-fs'
+import { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
 import { WebRuntime } from '@deepseek-ai/dsh-web'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 
 const parent = {} as Agent
 
@@ -152,6 +156,44 @@ describe('ResearchCoordinator', () => {
     expect(final.artifact?.source).toBe('workspace/research-plan.md')
     expect(final.state.nodes[final.state.selectedNodeId]?.stage).toBe('final-plan')
     expect(final.state.nodes[final.state.selectedNodeId]?.status).toBe('completed')
+  })
+
+  it('passes the resolved sandbox policy to the final plan writer', async () => {
+    let received: SandboxExecutionPolicy | undefined
+    const fs = Object.setPrototypeOf({
+      async resolve(path: string) {
+        return { targetKey: FsTargetKey(path), displayPath: path }
+      },
+      async writeText(
+        _target: FsTarget,
+        content: string,
+        _expected?: FsWriteIntent,
+        _signal?: AbortSignal,
+        policy?: SandboxExecutionPolicy,
+      ) {
+        received = policy
+        return { operation: 'create' as const, version: FsVersion('v1'), before: null, after: content }
+      },
+    }, FileSystem.prototype) as FileSystem
+    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: 'C:/research-workspace' }
+    const coordinator = createHostResearchCoordinator({
+      attachments: Object.setPrototypeOf({}, AttachmentStore.prototype) as AttachmentStore,
+      web: Object.setPrototypeOf({}, WebRuntime.prototype) as WebRuntime,
+      subagents: Object.setPrototypeOf({}, SubagentRuntime.prototype) as SubagentRuntime,
+      fs,
+    }, {
+      subagentProvider: 'spawn', planPath: 'research-plan.md', maxPaperBytes: 1024,
+      maxLiteratureResults: 4, maxPdfPages: 1, ocrScale: 1, maxOcrPixels: 100,
+      sandboxPolicy: policy,
+    })
+    const state = appendResearchOutput(createResearchState(), {
+      stage: 'final-plan', kind: 'plan', title: '完整科研方案', content: '# 方案', status: 'confirmed',
+    })
+
+    const result = await coordinator.advance({ state, parent })
+
+    expect(received).toEqual(policy)
+    expect(result.planFile?.content).toBe('# 方案')
   })
 
   it('refuses to run a stage whose output is still awaiting confirmation', async () => {

@@ -9,6 +9,8 @@
     { "path": "../../api/session-controller/tsconfig.host.json" },
     { "path": "../../attachment/attachment" },
     { "path": "../../fs/fs" },
+    { "path": "../../sandbox/sandbox" },
+    { "path": "../../sandbox/sandbox-policy" },
     { "path": "../../core/session" },
     { "path": "../../storage/storage-domain" },
     { "path": "../../subagent/subagent" },

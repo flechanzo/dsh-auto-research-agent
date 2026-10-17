@@ -18,6 +18,8 @@
 - **多源文献与创新点评审——当前检查点已完成。** 文献检索可以合并通用 Web 与 arXiv 机器学习分类（`cs.LG`、`cs.AI`、`cs.CL` 和 `stat.ML`），按 URL 去重，并把用户选择的来源带入确认方向后的第二轮针对性检索。问题提炼检查点提供创新性、影响力、可行性和可复现性权重调节。每个新生成或完善后的想法都会由全新的 `innovation-reviewer` 子 Agent 评估；评审只接收候选想法和提供的文献证据，不接收原始对话上下文。低于配置分数阈值或与已有论文高度重合的候选会被丢弃，并在配置次数内重新生成；通过的 artifact 会保留分数、阈值、重合结果和评审理由，供界面和最终方案使用。
 - **同一面板交互修复——当前检查点已完成。** 一次文件选择可以上传多篇论文并进行跨论文阅读；右侧 Sidebar 在同一界面显示完整分支树和每个阶段可展开的内容，方向侧重支持多选，最终方案从当前分支持久化的 plan artifact 渲染，并在写入文件后显示。继续历史节点会在当前 Session 创建分支，保留该节点记忆，不再打开左侧会话列表中的新对话。
 - **按 Session 的项目工作区——当前检查点已完成。** 每个推进中的科研 Session 都会通过注入的文件系统在自身 cwd 下创建 `research-projects/<sessionId>`。`research-conversation.md` 和 `research-state.json` 在该目录保存可见 DAG 和最终方案输出；后续阶段写入会保留上传论文清单，配置的 `planPath` 也会留在项目目录内。
+- **项目写入的沙箱修复——当前检查点已完成。** 项目记录和最终 Markdown 写入现在会携带已解析的 Session 沙箱策略。如果 Agent 子上下文没有继承该服务，控制器会回退到根 Context，避免在 `workspace-write` 下上传或输出方案时误报文件访问被拒绝。
+- **中间对话同步——当前检查点已完成。** 中间输入框下方现在使用与右侧 Sidebar 相同的、按 revision 排序的 Session store 展示科研 transcript。当前阶段、时间线和 artifact 输出会一起更新，较旧的读取结果不能覆盖较新的命令结果。
 - **科研 Sidebar 注册——当前检查点已完成。** 工作流现在会等待右侧 Sidebar、科研 Remote 和上传服务后再注册 Tab 类型、面板、标题、标题栏入口和工作流节点 slot。所有注册都可逆；同一面板会用稳定的任务和节点标记展示当前节点、活动分支、任务输出标题和完整祖先路径。
 - **多问题提炼——当前检查点已完成。** 问题提炼会按编号保留摘要中的每个可验证问题和缺口，分别回答各个问题，并在末尾给出供后续文献检索和想法生成使用的综合关系说明。
 
@@ -25,13 +27,13 @@
 
 - 科研状态转移的聚焦 Vitest 覆盖位于 `packages/workflow/workflow/tests/research.spec.ts`。
 - 协调器执行和确认门禁的聚焦 Vitest 覆盖位于 `packages/workflow/workflow/tests/research-coordinator.spec.ts`。
-- Web 面板使用 Host 实际返回结果；科研协调器和状态聚焦测试共通过 17 项，Host/Client 类型检查通过，仓库 Host 构建完成。
+- Web 面板使用 Host 实际返回结果；科研协调器聚焦套件通过 16 项，共享 research-session-store 套件通过 2 项，科研状态测试继续覆盖，受影响的 Host/Client TypeScript 项目编译通过，仓库 Host 构建完成。
 - GitHub 基线上传已完成：[flechanzo/dsh-auto-research-agent](https://github.com/flechanzo/dsh-auto-research-agent)。
 - 之前的检查已通过：`pnpm install`、完整 `pnpm run build`、科研/UI 聚焦测试、`pnpm run test:docs`（20/20）、包依赖策略、包不变量和 Client 包规则。汇总 hygiene 仍保留两个问题：当前 Windows 权限无法让 NodeNext 检查创建临时符号链接，以及既有 ACP profile 的 Loader 根结构错误。
 
 ## 当前检查点
 
-本检查点的 arXiv 与 Web 文献检索、方向权重、隔离创新点评分、论文重合过滤、历史恢复、确认方向后的二次文献调研、多篇论文上传、同一面板分支导航、已完成回答保留、与当前 Session 同步的 Sidebar、按 Session 的项目工作区、Markdown 文件写入和扫描版 PDF/OCR 路径已完成并待上传。发送第一条消息前，在新会话首页通过“智能体：自动科研智能体”下拉选择它；进入右侧“自动科研流程”后可一次选择多篇论文，在问题提炼节点调节方向侧重、多选研究侧重点和文献来源，再逐阶段确认。选择分支树中的历史节点后点击“从此阶段继续”会在当前面板创建分支，同时保留已有后续节点、全部分支和 artifact，之后可以切换分支继续修改。后续仍需加入具体的简单仿真适配器、deliverable 展示和端到端 Remote 覆盖。
+本检查点的 arXiv 与 Web 文献检索、方向权重、隔离创新点评分、论文重合过滤、历史恢复、确认方向后的二次文献调研、多篇论文上传、同一面板分支导航、已完成回答保留、与当前 Session 同步的 Sidebar 和中间 transcript、带沙箱策略的按 Session 项目工作区、Markdown 文件写入以及扫描版 PDF/OCR 路径已完成并待上传。发送第一条消息前，在新会话首页通过“智能体：自动科研智能体”下拉选择它；进入右侧“自动科研流程”后可一次选择多篇论文，在问题提炼节点调节方向侧重、多选研究侧重点和文献来源，再逐阶段确认。选择分支树中的历史节点后点击“从此阶段继续”会在当前面板创建分支，同时保留已有后续节点、全部分支和 artifact，之后可以切换分支继续修改。后续仍需加入具体的简单仿真适配器、deliverable 展示和端到端 Remote 覆盖。
 
 ## 开发备注
 

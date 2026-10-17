@@ -7,6 +7,8 @@ import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { isAbsolute, join, normalize, sep } from 'node:path'
 import { FsError, type FileSystem, type FsTarget } from '@deepseek-ai/dsh-fs'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain'
 import { createHostResearchCoordinator, type ResearchAdvanceResult } from '@deepseek-ai/dsh-workflow'
 import {
@@ -444,6 +446,7 @@ export class ResearchController extends TypertRemoteService {
     const project = this.ensureProject(agent, sessionId)
     const planPath = project === undefined ? this.config.planPath : join(project.path, this.config.planPath)
     const fs = agent.ctx.get('fs') ?? this.ctx.fs
+    const sandboxPolicy = this.resolveSandboxPolicy(agent)
     const coordinator = createHostResearchCoordinator({
       attachments: this.ctx.attachments,
       web: this.ctx.web,
@@ -459,6 +462,7 @@ export class ResearchController extends TypertRemoteService {
       maxOcrPixels: this.config.maxOcrPixels,
       innovationScoreThreshold: this.config.innovationScoreThreshold,
       maxIdeaAttempts: this.config.maxIdeaAttempts,
+      ...(sandboxPolicy === undefined ? {} : { sandboxPolicy }),
     })
     const result: ResearchAdvanceResult = await coordinator.advance({
       state: prepared.state,
@@ -474,7 +478,7 @@ export class ResearchController extends TypertRemoteService {
       : markResearchSessionBoundary(result.state, lastEventSeq, sessionId)
     if (project !== undefined) {
       const papers = prepared.papers ?? (prepared.paper === undefined ? undefined : [prepared.paper])
-      await this.writeProjectRecord(fs, project.path, sessionId, papers, state)
+      await this.writeProjectRecord(fs, project.path, sessionId, papers, state, sandboxPolicy)
     }
     return this.commit(sessionId, current.revision, state, { ...result, state })
   }
@@ -507,6 +511,7 @@ export class ResearchController extends TypertRemoteService {
     sessionId: SessionId,
     papers: readonly FileAttachmentRef[] | undefined,
     state: ResearchState,
+    sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<void> {
     const recordPath = await fs.resolve(join(projectPath, 'research-conversation.md'))
     const paperEntries = papers === undefined
@@ -533,9 +538,9 @@ export class ResearchController extends TypertRemoteService {
           .map(artifact => `### ${artifact.title}\n\n${artifact.content}`)),
       '',
     ].join('\n')
-    await fs.writeText(recordPath, manifest)
+    await fs.writeText(recordPath, manifest, undefined, undefined, sandboxPolicy)
     const stateFile = await fs.resolve(join(projectPath, 'research-state.json'))
-    await fs.writeText(stateFile, JSON.stringify(state, null, 2))
+    await fs.writeText(stateFile, JSON.stringify(state, null, 2), undefined, undefined, sandboxPolicy)
   }
 
   /**
@@ -573,13 +578,20 @@ export class ResearchController extends TypertRemoteService {
     const project = this.ensureProject(agent, sessionId)
     if (project === undefined) return
     const fs = agent.ctx.get('fs') ?? this.ctx.fs
-    await this.writeProjectRecord(fs, project.path, sessionId, papers, state)
+    const sandboxPolicy = this.resolveSandboxPolicy(agent)
+    await this.writeProjectRecord(fs, project.path, sessionId, papers, state, sandboxPolicy)
   }
 
   private async agent(sessionId: SessionId): Promise<Agent> {
     const result = await this.ctx.sessionController.resolveAgent(sessionId)
     if ('error' in result) throw result.error
     return result.agent
+  }
+
+  /** Resolve the session policy from the Agent scope, falling back to the host scope. */
+  private resolveSandboxPolicy(agent: Agent): SandboxExecutionPolicy | undefined {
+    const provider = agent.ctx.get('sandboxPolicy') ?? this.ctx.get('sandboxPolicy')
+    return provider?.resolve({ session: agent.session })
   }
 
   private async current(sessionId: SessionId, expectedRevision: number): Promise<ResearchSnapshot> {

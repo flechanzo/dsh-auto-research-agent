@@ -19,6 +19,7 @@ import type {
   WebSearchSource,
 } from '@deepseek-ai/dsh-web'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import {
   appendResearchOutput,
   assertInnovationClaim,
@@ -859,6 +860,8 @@ export interface HostResearchCoordinatorOptions {
   readonly innovationScoreThreshold?: number
   /** Maximum fresh candidates generated for one idea checkpoint. */
   readonly maxIdeaAttempts?: number
+  /** Sandbox policy resolved for the parent Session's file writes. */
+  readonly sandboxPolicy?: SandboxExecutionPolicy
 }
 
 /** Host capabilities needed to assemble a coordinator from the DSH services. */
@@ -883,7 +886,7 @@ export function createHostResearchCoordinator(
   const planWriter: ResearchPlanWriter = {
     async write(file) {
       const target = await services.fs.resolve(options.planPath)
-      await services.fs.writeText(target, file.content)
+      await services.fs.writeText(target, file.content, undefined, undefined, options.sandboxPolicy)
       return { fileName: target.displayPath, content: file.content }
     },
   }
