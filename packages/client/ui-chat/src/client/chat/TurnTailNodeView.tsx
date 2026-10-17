@@ -10,7 +10,7 @@ import type { ChatSnapshot } from '../contract/snapshot.ts'
 import css from './TurnTailNodeView.module.css'
 
 type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
-  & PropsRenderSlots<'conversation.chat.turnTail' | 'conversation.chat.assistant-actions'>
+  & PropsRenderSlots<'conversation.chat.turnTail' | 'conversation.chat.assistant-actions' | 'conversation.chat.branch'>
   & InjectFace<PerformanceUsageInjected>
 
 function lastContent(snapshot: ChatSnapshot, turn: number, skipWarning: boolean): ChatNode | undefined {
@@ -53,6 +53,8 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const assistantActions = messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
+  const branchOwner = { turn, seq: closing.finalNode.seq, branchUnavailable: data.branchUnavailable || hasLaterChatNode }
+  const researchBranch = renderSlot('conversation.chat.branch', branchOwner)
   return (
     <div
       className={css.root}
@@ -66,7 +68,8 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         clock="end"
         // The branch action owns boundary resolution: it sends the real
         // turn/end seq it already has, and the Host cuts exactly there.
-        onBranch={() => { forkAt(data.seq) }}
+        onBranch={researchBranch === null ? () => { forkAt(data.seq) } : undefined}
+        branchAction={researchBranch === null ? undefined : researchBranch}
         branchUnavailable={data.branchUnavailable || hasLaterChatNode}
         className={css.actions}
         extraActions={assistantActions}

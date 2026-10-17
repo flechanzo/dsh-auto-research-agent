@@ -310,10 +310,10 @@
   padding-top: 6px;
 }
 
-.transcriptItem summary {
-  cursor: pointer;
+.transcriptTitle {
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .mainTranscript {

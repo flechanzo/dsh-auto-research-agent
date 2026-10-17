@@ -18,6 +18,7 @@ import { ResearchTranscriptMain, type ResearchTranscriptMainInjected } from './R
 import { ResearchBranchSelector, type ResearchBranchSelectorInjected } from './ResearchBranchSelector.tsx'
 import { ResearchTitle } from './ResearchTitle.tsx'
 import { ResearchAction, type ResearchActionInjected } from './ResearchAction.tsx'
+import { ResearchBranchAction, type ResearchBranchActionInjected } from './ResearchBranchAction.tsx'
 import { researchDefinition, RESEARCH_ID, RESEARCH_KIND } from './research-definition.ts'
 import { en, NS, type WorkflowRunKey, zh } from './locales.ts'
 import { workflowRunDefinition } from './workflow-definition.ts'
@@ -63,6 +64,13 @@ export function apply(ctx: ClientContext): void {
       inject: (_sessionId): ResearchTranscriptMainInjected => ({ research: ctx.remote.research }),
     }, ResearchTranscriptMain)),
     'ui-workflow-run: research conversation transcript',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('conversation.chat.branch', () => ctx.slots.register({
+      name: 'conversation.chat.branch', locale: NS,
+      inject: (_sessionId): ResearchBranchActionInjected => ({ research: ctx.remote.research }),
+    }, ResearchBranchAction)),
+    'ui-workflow-run: research same-session branch action',
   )
   ctx.effect(
     () => ctx.slots.inject('conversation.session.header.tabs', () => ctx.slots.register({

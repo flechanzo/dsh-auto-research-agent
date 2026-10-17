@@ -5,7 +5,7 @@ import type {
   ResearchState,
 } from '@deepseek-ai/dsh-api-research-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
 /** One client snapshot shared by the main transcript and the right panel. */
 export interface ResearchSessionSnapshot {
@@ -16,6 +16,8 @@ export interface ResearchSessionSnapshot {
 interface Entry {
   snapshot?: ResearchSessionSnapshot
   listeners: Set<() => void>
+  readPromise: Promise<RemoteResult<ResearchSessionSnapshot>> | undefined
+  failure: RemoteFailure | undefined
 }
 
 const entries = new Map<string, Entry>()
@@ -24,7 +26,7 @@ function entryOf(sessionId: SessionId): Entry {
   const key = String(sessionId)
   let entry = entries.get(key)
   if (entry === undefined) {
-    entry = { listeners: new Set() }
+    entry = { listeners: new Set(), readPromise: undefined, failure: undefined }
     entries.set(key, entry)
   }
   return entry
@@ -37,6 +39,7 @@ function notify(entry: Entry): void {
 function publish(entry: Entry, snapshot: ResearchSessionSnapshot): boolean {
   if (entry.snapshot !== undefined && entry.snapshot.revision > snapshot.revision) return false
   entry.snapshot = snapshot
+  entry.failure = undefined
   notify(entry)
   return true
 }
@@ -47,6 +50,14 @@ function publish(entry: Entry, snapshot: ResearchSessionSnapshot): boolean {
  */
 export function researchSessionSnapshot(sessionId: SessionId): ResearchSessionSnapshot | undefined {
   return entryOf(sessionId).snapshot
+}
+
+/** Read the latest shared failure for one Session's research load.
+ * @param sessionId - Session whose failure is requested.
+ * @returns The latest load failure, or undefined when no load has failed.
+ */
+export function researchSessionFailure(sessionId: SessionId): RemoteFailure | undefined {
+  return entryOf(sessionId).failure
 }
 
 /** Publish a command result to every visible projection of the same Session.
@@ -72,7 +83,7 @@ export function subscribeResearchSession(sessionId: SessionId, listener: () => v
 /** Read the remote snapshot and publish it for every mounted projection.
  * @param research - Remote namespace used to read the Session state.
  * @param sessionId - Session whose state is requested.
- * @param _signal - Optional abort signal for a component that unmounted.
+ * @param _signal - Optional component lifecycle signal; shared reads are not cancelled by one unmounted projection.
  * @returns The published snapshot or the remote failure.
  */
 export async function loadResearchSession(
@@ -80,15 +91,28 @@ export async function loadResearchSession(
   sessionId: SessionId,
   _signal?: AbortSignal,
 ): Promise<RemoteResult<ResearchSessionSnapshot>> {
-  const result = await research.read({ sessionId })
-  if (!result.ok || _signal?.aborted) return result
-  const snapshot: ResearchSessionSnapshot = {
-    revision: result.value.revision,
-    state: result.value.state,
-  }
   const entry = entryOf(sessionId)
-  publish(entry, snapshot)
-  return { ok: true, value: entry.snapshot ?? snapshot }
+  if (entry.snapshot !== undefined) return { ok: true, value: entry.snapshot }
+  const readPromise = entry.readPromise ?? (async (): Promise<RemoteResult<ResearchSessionSnapshot>> => {
+    const result = await research.read({ sessionId })
+    if (!result.ok) {
+      entry.failure = result.error
+      notify(entry)
+      return result
+    }
+    const snapshot: ResearchSessionSnapshot = {
+      revision: result.value.revision,
+      state: result.value.state,
+    }
+    publish(entry, snapshot)
+    return { ok: true, value: entry.snapshot ?? snapshot }
+  })()
+  entry.readPromise = readPromise
+  try {
+    return await readPromise
+  } finally {
+    if (entry.readPromise === readPromise) entry.readPromise = undefined
+  }
 }
 
 /** Bind a component to the shared research snapshot and load it on mount.
@@ -111,4 +135,16 @@ export function useResearchSession(
     void loadResearchSession(research, sessionId, signal)
   }, [research, sessionId, signal])
   return snapshot
+}
+
+/** Subscribe to a shared research load failure without issuing another read.
+ * @param sessionId - Session whose failure is observed.
+ * @returns The latest load failure, or undefined while loading or after success.
+ */
+export function useResearchSessionFailure(sessionId: SessionId): RemoteFailure | undefined {
+  return useSyncExternalStore(
+    listener => subscribeResearchSession(sessionId, listener),
+    () => researchSessionFailure(sessionId),
+    () => researchSessionFailure(sessionId),
+  )
 }

@@ -52,6 +52,16 @@ export interface TurnTailOwnerProps {
   openFile: (path: string) => void
 }
 
+/** Owner currency for a Session-scoped replacement of the generic fork action. */
+export interface ConversationChatBranchOwnerProps {
+  /** Turn containing the action. */
+  turn: TurnLocation
+  /** Closing event sequence associated with the turn. */
+  seq: number
+  /** Whether the completed-turn branch action is unavailable. */
+  branchUnavailable: boolean
+}
+
 /** Owner currency of finalized-assistant actions. */
 export interface AssistantActionOwnerProps {
   messageId: MessageId
@@ -303,6 +313,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.message.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
     /** Main conversation projection for session-scoped workflow transcripts. */
     'conversation.chat.research': { kind: 'single'; scope: 'session' }
+    /** Optional Session-scoped replacement for the generic new-Conversation fork action. */
+    'conversation.chat.branch': { kind: 'single'; scope: 'session'; owner: ConversationChatBranchOwnerProps }
     /**
      * Command row keyed by the command name. The component receives the folded
      * command lifecycle and linked compaction when present. Reusing a key

@@ -16,10 +16,9 @@ import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/clie
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkflowRunKey } from './locales.ts'
 import {
-  loadResearchSession,
   publishResearchSession,
-  researchSessionSnapshot,
-  subscribeResearchSession,
+  useResearchSessionFailure,
+  useResearchSession,
 } from './research-session-store.ts'
 import css from './ResearchPanel.module.css'
 
@@ -145,13 +144,12 @@ function failureText(failure: { readonly message: string; readonly code: string 
 /** Render the staged research workflow, its branches, artifacts, and checkpoints. */
 export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }: ResearchPanelProps): ReactNode {
   const { tab } = useTabInfo()
-  const navigationParams = tab.navigation.params
-  const workflowSessionId = navigationParams !== undefined && 'sessionId' in navigationParams
-    ? navigationParams.sessionId
-    : sessionId
-  const [state, setState] = useState<ResearchState>()
-  const [revision, setRevision] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const workflowSessionId = sessionId
+  const snapshot = useResearchSession(research, workflowSessionId, tab.signal)
+  const loadFailure = useResearchSessionFailure(workflowSessionId)
+  const state = snapshot?.state
+  const revision = snapshot?.revision ?? 0
+  const loading = snapshot === undefined && loadFailure === undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [feedback, setFeedback] = useState('')
@@ -200,37 +198,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   )
 
   useEffect(() => {
-    const unsubscribe = subscribeResearchSession(workflowSessionId, () => {
-      const snapshot = researchSessionSnapshot(workflowSessionId)
-      if (snapshot === undefined) return
-      setRevision(snapshot.revision)
-      setState(snapshot.state)
-    })
-    let disposed = false
-    const load = async (): Promise<void> => {
-      const existing = researchSessionSnapshot(workflowSessionId)
-      setLoading(true)
-      setError(undefined)
-      setState(existing?.state)
-      setRevision(existing?.revision ?? 0)
-      try {
-        const result = await loadResearchSession(research, workflowSessionId, tab.signal)
-        if (disposed) return
-        if (result.ok) {
-          setRevision(result.value.revision)
-          setState(result.value.state)
-        } else {
-          setError(failureText(result.error, t))
-        }
-      } catch {
-        if (!disposed) setError(t('research.error.request'))
-      } finally {
-        if (!disposed) setLoading(false)
-      }
-    }
-    void load()
-    return () => { disposed = true; unsubscribe() }
-  }, [research, tab.signal, workflowSessionId, t])
+    if (loadFailure !== undefined) setError(failureText(loadFailure, t))
+  }, [loadFailure, t])
 
   useEffect(() => {
     setReviewers(selected.memorySnapshot.reviewerRoles.length > 0
@@ -262,8 +231,6 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       // A historical continuation stays in this Session so the panel can keep
       // the branch tree and all later nodes visible while editing the fork.
       if (result.value.snapshot.sessionId === workflowSessionId) {
-        setRevision(result.value.snapshot.revision)
-        setState(result.value.snapshot.state)
         publishResearchSession(workflowSessionId, result.value.snapshot)
       }
       return result.value
@@ -533,15 +500,14 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         <section className={css.transcript} aria-label={t('research.stageContents')}>
           <div className={css.subtle}>{t('research.stageContents')}</div>
           {stageArtifacts.map(({ node, artifact: item }) => (
-            <details
+            <article
               key={node.nodeId}
-              open={node.nodeId === selected.nodeId}
               className={css.transcriptItem}
               data-research-task={node.nodeId}
             >
-              <summary>{stageText(node.stage, t)} · {item.title}</summary>
+              <div className={css.transcriptTitle}>{stageText(node.stage, t)} · {item.title}</div>
               <pre className={css.content}>{item.content}</pre>
-            </details>
+            </article>
           ))}
         </section>
       )}
