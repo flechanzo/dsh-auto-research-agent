@@ -224,7 +224,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-research-controller`
 
 - `inject`: `attachments` · `fs` · `sessionController` · `storageDomain` · `subagents` · `typert` · `web`
-- `source`: [`packages/api/research-controller/src/index.ts:182`](../packages/api/research-controller/src/index.ts)
+- `source`: [`packages/api/research-controller/src/index.ts:195`](../packages/api/research-controller/src/index.ts)
 
 ```ts config-catalog
 /** Host limits and provider selection for automatic research. */

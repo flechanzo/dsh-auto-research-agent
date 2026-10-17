@@ -14,7 +14,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { WorkflowRunPanel, type WorkflowRunInjected } from './WorkflowRunPanel.tsx'
 import { ResearchPanel, type ResearchPanelInjected } from './ResearchPanel.tsx'
-import { ResearchTranscriptDock, type ResearchTranscriptInjected } from './ResearchTranscriptDock.tsx'
+import { ResearchTranscriptMain, type ResearchTranscriptMainInjected } from './ResearchTranscriptMain.tsx'
+import { ResearchBranchSelector, type ResearchBranchSelectorInjected } from './ResearchBranchSelector.tsx'
 import { ResearchTitle } from './ResearchTitle.tsx'
 import { ResearchAction, type ResearchActionInjected } from './ResearchAction.tsx'
 import { researchDefinition, RESEARCH_ID, RESEARCH_KIND } from './research-definition.ts'
@@ -51,22 +52,24 @@ export function apply(ctx: ClientContext): void {
     'ui-workflow-run: research tab body',
   )
   ctx.effect(
-    () => ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
-      name: 'conversation.composer.dock', id: 'research-transcript', order: 20, locale: NS,
-      inject: (): ResearchTranscriptInjected => ({
-        research: ctx.remote.research,
-        openPanel: (selectedSessionId) => {
-          ctx.sidebarRight.openTab(RESEARCH_KIND, { params: { sessionId: selectedSessionId } })
-        },
-      }),
-    }, ResearchTranscriptDock)),
-    'ui-workflow-run: research center transcript',
-  )
-  ctx.effect(
     () => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab.title', key: RESEARCH_ID, locale: NS,
     }, ResearchTitle)),
     'ui-workflow-run: research tab title',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('conversation.chat.research', () => ctx.slots.register({
+      name: 'conversation.chat.research', locale: NS,
+      inject: (_sessionId): ResearchTranscriptMainInjected => ({ research: ctx.remote.research }),
+    }, ResearchTranscriptMain)),
+    'ui-workflow-run: research conversation transcript',
+  )
+  ctx.effect(
+    () => ctx.slots.inject('conversation.session.header.tabs', () => ctx.slots.register({
+      name: 'conversation.session.header.tabs', id: 'research-branch-selector', order: 20, locale: NS,
+      inject: (): ResearchBranchSelectorInjected => ({ research: ctx.remote.research }),
+    }, ResearchBranchSelector)),
+    'ui-workflow-run: research branch selector',
   )
   ctx.effect(
     () => ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({

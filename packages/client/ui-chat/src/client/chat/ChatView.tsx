@@ -246,6 +246,7 @@ export function ChatView({
               </div>
             )}
             <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile} fileImages={fileImages}>
+              {renderSlot('conversation.chat.research', {})}
               <ChatNodeList
                 entries={entries}
                 pendingInputs={pendingInputs}

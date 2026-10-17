@@ -7,7 +7,7 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
-/** One client snapshot shared by the center transcript and the right panel. */
+/** One client snapshot shared by the main transcript and the right panel. */
 export interface ResearchSessionSnapshot {
   readonly revision: number
   readonly state: ResearchState
@@ -41,25 +41,40 @@ function publish(entry: Entry, snapshot: ResearchSessionSnapshot): boolean {
   return true
 }
 
-/** Read the latest locally published snapshot for one Session. */
+/** Read the latest locally published snapshot for one Session.
+ * @param sessionId - Session whose snapshot is requested.
+ * @returns The latest snapshot, or undefined before the first read or command.
+ */
 export function researchSessionSnapshot(sessionId: SessionId): ResearchSessionSnapshot | undefined {
   return entryOf(sessionId).snapshot
 }
 
-/** Publish a command result to every visible projection of the same Session. */
+/** Publish a command result to every visible projection of the same Session.
+ * @param sessionId - Session whose projections receive the result.
+ * @param snapshot - Complete state returned by the command.
+ */
 export function publishResearchSession(sessionId: SessionId, snapshot: ResearchCommandValue['snapshot']): void {
   const entry = entryOf(sessionId)
   publish(entry, { revision: snapshot.revision, state: snapshot.state })
 }
 
-/** Subscribe to updates for one Session and return an idempotent disposer. */
+/** Subscribe to updates for one Session and return an idempotent disposer.
+ * @param sessionId - Session whose state changes are observed.
+ * @param listener - Callback invoked after a newer snapshot is published.
+ * @returns An idempotent subscription disposer.
+ */
 export function subscribeResearchSession(sessionId: SessionId, listener: () => void): () => void {
   const entry = entryOf(sessionId)
   entry.listeners.add(listener)
   return () => { entry.listeners.delete(listener) }
 }
 
-/** Read the remote snapshot and publish it for every mounted projection. */
+/** Read the remote snapshot and publish it for every mounted projection.
+ * @param research - Remote namespace used to read the Session state.
+ * @param sessionId - Session whose state is requested.
+ * @param _signal - Optional abort signal for a component that unmounted.
+ * @returns The published snapshot or the remote failure.
+ */
 export async function loadResearchSession(
   research: Pick<ResearchRemote, 'read'>,
   sessionId: SessionId,
@@ -76,9 +91,14 @@ export async function loadResearchSession(
   return { ok: true, value: entry.snapshot ?? snapshot }
 }
 
-/** Bind a component to the shared research snapshot and load it on mount. */
+/** Bind a component to the shared research snapshot and load it on mount.
+ * @param research - Remote namespace used to load the state.
+ * @param sessionId - Session whose state is observed.
+ * @param signal - Optional abort signal for the component lifecycle.
+ * @returns The current shared snapshot, or undefined before loading.
+ */
 export function useResearchSession(
-  research: ResearchRemote,
+  research: Pick<ResearchRemote, 'read'>,
   sessionId: SessionId,
   signal?: AbortSignal,
 ): ResearchSessionSnapshot | undefined {

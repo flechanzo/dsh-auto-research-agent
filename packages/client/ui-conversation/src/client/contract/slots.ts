@@ -164,6 +164,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: ConversationHeaderActionOwnerProps
     }
+    /** Actions rendered in the Conversation/Trajectory tab strip. */
+    'conversation.session.header.tabs': {
+      kind: 'list'
+      scope: 'session'
+      owner: ConversationHeaderTabActionOwnerProps
+    }
     /** Global navigation before the Session title, available without a Session. */
     'conversation.header.leading': {
       kind: 'single'
@@ -280,6 +286,12 @@ export interface HeroAgentPresetOwnerProps {
 export interface ConversationHeaderActionOwnerProps {
   /** Marker field: entries receive no owner-specific values. */
   children?: never
+}
+
+/** Owner values for controls placed beside the Conversation view tabs. */
+export interface ConversationHeaderTabActionOwnerProps {
+  /** Currently selected Conversation view id. */
+  viewId: string | undefined
 }
 
 /** The header corner's occupant derives its state from standard Session props. */
@@ -502,6 +514,7 @@ export type ConversationSessionHeaderSlotProps =
     'conversation.session.header.lineage'
     | 'conversation.session.header.actions'
     | 'conversation.session.header.utilities'
+    | 'conversation.session.header.tabs'
     | 'conversation.session.header.corner'
   >
   & PropsStore<ConversationStore>

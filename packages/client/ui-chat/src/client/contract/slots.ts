@@ -262,7 +262,7 @@ export interface ChatViewInjected {
 /** Full Chat view props. */
 export type ChatViewSlotProps =
   PropsRuntime<'conversation.view'>
-  & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images'>
+  & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images' | 'conversation.chat.research'>
   & PropsStore<ChatStore>
   & InjectFace<ChatViewInjected>
   & PropsLocale<'chat'>
@@ -301,6 +301,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * registration replaces the shipped gallery; without one, images are omitted.
      */
     'conversation.message.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
+    /** Main conversation projection for session-scoped workflow transcripts. */
+    'conversation.chat.research': { kind: 'single'; scope: 'session' }
     /**
      * Command row keyed by the command name. The component receives the folded
      * command lifecycle and linked compaction when present. Reusing a key

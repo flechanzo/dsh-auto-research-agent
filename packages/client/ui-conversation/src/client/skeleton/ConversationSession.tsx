@@ -141,18 +141,23 @@ export function ConversationSessionHeader({
         // data-conversation-tabs: marks the tab strip, which the window-chrome
         // geometry and the browser coverage lane anchor on.
         <div className={css.tabs} role="tablist" data-conversation-tabs="">
-          {tabs.map(viewTab => (
-            <button
-              key={viewTab.id}
-              type="button"
-              role="tab"
-              aria-selected={viewTab.id === active?.id}
-              className={clsx(css.tab, viewTab.id === active?.id && css.tabActive)}
-              onClick={() => { selectView(viewTab.id) }}
-            >
-              {viewTab.label}
-            </button>
-          ))}
+          <div className={css.tabList}>
+            {tabs.map(viewTab => (
+              <button
+                key={viewTab.id}
+                type="button"
+                role="tab"
+                aria-selected={viewTab.id === active?.id}
+                className={clsx(css.tab, viewTab.id === active?.id && css.tabActive)}
+                onClick={() => { selectView(viewTab.id) }}
+              >
+                {viewTab.label}
+              </button>
+            ))}
+          </div>
+          <div className={css.tabsExtras}>
+            {renderSlot('conversation.session.header.tabs', { viewId: active?.id })}
+          </div>
         </div>
       )}
     </>
