@@ -1,6 +1,6 @@
 /** Host-side execution coordinator for the human-confirmed research DAG. */
 
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { fileURLToPath } from 'node:url'
 import type {
   AttachmentStore,
@@ -16,7 +16,6 @@ import type {
 } from '@deepseek-ai/dsh-subagent'
 import type {
   WebRuntime,
-  WebSearchSource,
 } from '@deepseek-ai/dsh-web'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
@@ -234,6 +233,8 @@ export interface ResearchAdvanceRequest {
   readonly paper?: FileAttachmentRef
   /** All papers selected for the initial reading checkpoint. */
   readonly papers?: readonly FileAttachmentRef[]
+  /** Papers uploaded after a literature search for the current checkpoint. */
+  readonly supplementalPapers?: readonly FileAttachmentRef[]
   /** Review roles selected by the user before the review step. */
   readonly reviewerRoles?: readonly string[]
   /** Direction emphasis copied into the next idea prompt. */
@@ -277,6 +278,9 @@ export class ResearchCoordinator {
     signal?.throwIfAborted()
     const state = request.state
     const node = selectedResearchNode(state)
+    if (request.supplementalPapers !== undefined) {
+      return this.addSupplementalLiterature(request)
+    }
     if (node.status === 'awaiting-confirmation') {
       throw new Error(`research stage "${node.stage}" requires user confirmation before it can continue`)
     }
@@ -317,6 +321,38 @@ export class ResearchCoordinator {
     }
   }
 
+  private async addSupplementalLiterature(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
+    const node = selectedResearchNode(request.state)
+    if (node.stage !== 'literature-search' && node.stage !== 'targeted-literature-search') {
+      throw new Error('supplemental literature can only be uploaded after a literature search')
+    }
+    const papers = request.supplementalPapers ?? []
+    if (papers.length === 0) throw new Error('at least one supplemental paper attachment is required')
+    const documents: ResearchPaperDocument[] = []
+    for (const paper of papers) {
+      request.signal?.throwIfAborted()
+      documents.push(await this.adapters.papers.read(paper, request.signal, { parent: request.parent }))
+    }
+    const prompt = documents.map(paper =>
+      `文件：${paper.fileName}\n读取方式：${paper.extractionMethod}\n\n${paper.text}`,
+    ).join('\n\n---\n\n')
+    const summary = await this.adapters.agents.run(
+      'paper-summarizer',
+      `请用简体中文总结以下补充论文，并逐篇列出与当前研究方向相关的方法、基线、证据、限制和可借鉴之处。不要编造事实；保留论文标题、URL、公式和代码原样。\n\n${prompt}`,
+      request.parent,
+      request.signal,
+    )
+    const fileNames = documents.map(paper => paper.fileName).join(', ')
+    const state = appendResearchOutput(request.state, {
+      stage: node.stage,
+      kind: 'literature',
+      title: `补充文献调研（${String(documents.length)} 篇）`,
+      content: `${documents.map(paper => `### ${paper.fileName}\n\n读取方式：${paper.extractionMethod}`).join('\n\n')}\n\n${summary}`,
+      source: fileNames,
+    }, Date.now())
+    return this.withLatestArtifact(state)
+  }
+
   private async readAndSummarize(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     const papers = request.papers ?? (request.paper === undefined ? [] : [request.paper])
     if (papers.length === 0) throw new Error('at least one paper attachment is required before paper reading')
@@ -330,7 +366,7 @@ export class ResearchCoordinator {
     ).join('\n\n---\n\n')
     const summary = await this.adapters.agents.run(
       'paper-summarizer',
-      `Read all uploaded research papers below. Return a separate faithful structured summary for every file, followed by a short cross-paper comparison of questions, methods, evidence, and limitations. Do not invent facts. If OCR was used, mark uncertain characters and avoid silently completing unreadable text.\n\n${prompt}`,
+      `请始终使用简体中文回答（论文标题、URL、代码、公式和 JSON 字段名可保留原样）。阅读以下全部上传论文。请逐篇给出忠实、结构化的摘要，再比较它们的研究问题、方法、证据和局限。不要编造事实；如果使用 OCR，请标出不确定字符，不要擅自补全不可读文本。\n\n${prompt}`,
       request.parent,
       request.signal,
     )
@@ -349,7 +385,7 @@ export class ResearchCoordinator {
     const summary = this.latestArtifact(request.state, 'summary')
     const problem = await this.adapters.agents.run(
       'problem-extractor',
-      `Extract every distinct, testable research problem and research gap in this paper summary; do not select only one when several are present. Number the problems in priority order, and for each one state the assumptions, measurable failure modes, constraints, and evidence that would falsify the claim. End with a short synthesis explaining how the listed problems relate and which combinations should be addressed together. Preserve separate answers for separate questions so downstream literature search and idea generation can cover the full set.\n\n${summary.content}`,
+      `请用简体中文提炼摘要中的每一个彼此独立且可检验的研究问题与研究缺口；存在多个问题时必须全部保留，不能只选择一个。按优先级编号，并分别说明假设、可测失败模式、约束和可能证伪该主张的证据。最后说明问题之间的关系以及适合组合解决的部分。保持不同问题的答案分开，便于后续逐项检索和提出想法。\n\n${summary.content}`,
       request.parent,
       request.signal,
     )
@@ -424,7 +460,7 @@ export class ResearchCoordinator {
       const role: ResearchAgentRole = input.refinement ? 'idea-refiner' : 'idea-generator'
       const idea = await this.adapters.agents.run(
         role,
-        `${input.refinement ? 'Revise the candidate research idea' : 'Propose one research improvement'} using only the material below. Return one falsifiable, implementable candidate. Explicitly label the innovation and explain why it differs from prior work. Include method, baselines, ablations, metrics, and risks. This is candidate attempt ${attempt}; make it materially distinct from failed candidates if any.\n\nDirection weights (sum need not equal 100): novelty=${weights.novelty}, impact=${weights.impact}, feasibility=${weights.feasibility}, reproducibility=${weights.reproducibility}.\nSelected direction focus areas: ${focuses}.\n\nProblem or candidate context:\n${input.problem}\n\nLiterature evidence:\n${input.literature}${lastFailure.length === 0 ? '' : `\n\nPrevious candidate rejection reason (do not repeat it):\n${lastFailure}`}`,
+        `请用简体中文${input.refinement ? '根据反馈修改候选研究想法' : '提出一个研究改进想法'}，只能使用下面的材料。给出一个可证伪、可实现的候选方案，明确标注创新点并解释它与已有工作的差异，包含方法、基线、消融、指标和风险。本次是第 ${attempt} 个候选；如果前一个候选被否决，必须做出实质不同的方案。\n\n方向权重（不要求总和为 100）：创新性=${weights.novelty}，影响力=${weights.impact}，可行性=${weights.feasibility}，可复现性=${weights.reproducibility}。\n选择的方向侧重：${focuses}。\n\n问题或候选方案上下文：\n${input.problem}\n\n文献证据：\n${input.literature}${lastFailure.length === 0 ? '' : `\n\n上一个候选被否决的原因（不要重复）：\n${lastFailure}`}`,
         request.parent,
         request.signal,
       )
@@ -438,7 +474,7 @@ export class ResearchCoordinator {
       assertInnovationClaim(candidate)
       const evaluationText = await this.adapters.agents.run(
         'innovation-reviewer',
-        `You are an independent innovation expert. Do not infer or request the original conversation, user feedback, hidden state, or the source paper. Evaluate only the candidate and the literature evidence included below. Check whether the candidate is substantially distinct from the cited work. Return strict JSON only, with no Markdown: {"score":0,"overlap":false,"rationale":"..."}. score is an integer from 0 to 100; overlap is true when the candidate substantially duplicates a cited paper.\n\nCandidate:\n${idea}\n\nLiterature evidence:\n${input.literature}`,
+        `你是完全独立的创新性专家。不要推断或索取原始对话、用户反馈、隐藏状态或论文全文；只能评价下面给出的候选方案和文献证据。检查候选方案是否与引用工作高度重合。只返回严格 JSON，不要 Markdown：{"score":0,"overlap":false,"rationale":"……"}。score 必须是 0 到 100 的整数；当候选方案实质重复引用论文时 overlap 为 true；rationale 必须用简体中文。\n\n候选方案：\n${idea}\n\n文献证据：\n${input.literature}`,
         request.parent,
         request.signal,
       )
@@ -474,7 +510,7 @@ export class ResearchCoordinator {
       const role = roleMap[label] ?? 'method-reviewer'
       const review = await this.adapters.agents.run(
         role,
-        `Review this research idea as the ${label} reviewer. Identify one concrete strength, one blocking issue, and an exact revision or test. Check the explicit innovation claim.\n\n${idea.content}`,
+        `请用简体中文以“${label}”审查者身份评审下面的研究想法。指出一个具体优点、一个阻塞性问题，以及一项明确的修改或测试；同时检查明确写出的创新性主张。\n\n${idea.content}`,
         request.parent,
         request.signal,
       )
@@ -490,7 +526,7 @@ export class ResearchCoordinator {
     const problem = this.latestArtifact(request.state, 'problem')
     const idea = this.latestArtifact(request.state, 'idea')
     const sources = await this.adapters.literature.search(
-      `Find recent and directly comparable research for this confirmed direction. Prioritize methods, baselines, and evidence that can challenge the proposed innovation.\n\nResearch problem:\n${problem.content}\n\nConfirmed direction:\n${idea.content}`,
+      `请围绕已经确认的方向检索近期且直接可比较的研究，优先寻找可能挑战该创新点的方法、基线和证据，并用简体中文整理结果。\n\n研究问题：\n${problem.content}\n\n已确认方向：\n${idea.content}`,
       request.signal,
       { sources: selectedResearchNode(request.state).memorySnapshot.literatureSources },
     )
@@ -646,19 +682,19 @@ export function createAttachmentPaperReader(
 }
 
 /**
- * Build a literature search adapter backed by the configured web provider.
- * @param web - Configured Web runtime.
+ * Build a literature search adapter backed by the configured fetch provider.
+ * @param web - Configured Web runtime used only for explicit paper-index fetches.
  * @param maxResults - Explicit source limit for one search.
  * @returns A literature search adapter that fetches missing snippets.
  */
 export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number): ResearchLiteratureSearcher {
   return {
     async search(query, signal, options) {
-      const sources = options?.sources === undefined || options.sources.length === 0 ? ['web', 'arxiv'] as const : options.sources
+      const sources = options?.sources === undefined || options.sources.length === 0
+        ? ['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'] as const
+        : options.sources
       const limit = options?.maxResults ?? maxResults
-      const collected: ResearchLiteratureSource[] = []
-      if (sources.includes('web')) collected.push(...await searchWeb(web, query, signal, limit))
-      if (sources.includes('arxiv')) collected.push(...await searchArxiv(web, query, signal, limit))
+      const collected = (await Promise.all(sources.map(source => searchLiteratureSource(web, source, query, signal, limit)))).flat()
       const seen = new Set<string>()
       return collected.filter((source) => {
         if (seen.has(source.url)) return false
@@ -669,39 +705,162 @@ export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number)
   }
 }
 
-/** Search the general Web backend without making one unavailable backend abort the workflow. */
-async function searchWeb(
+/** Search one explicit paper index without making an unavailable index abort the workflow. */
+async function searchLiteratureSource(
+  web: WebRuntime,
+  source: ResearchLiteratureSourceId,
+  query: string,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<readonly ResearchLiteratureSource[]> {
+  try {
+    switch (source) {
+      case 'arxiv': return await searchArxiv(web, query, signal, maxResults)
+      case 'openreview': return await searchOpenReview(web, query, signal, maxResults)
+      case 'semantic-scholar': return await searchSemanticScholar(web, query, signal, maxResults)
+      case 'acl-anthology': return await searchAclAnthology(web, query, signal, maxResults)
+      case 'openalex': return await searchOpenAlex(web, query, signal, maxResults)
+      default: return unreachableLiteratureSource(source)
+    }
+  } catch {
+    signal?.throwIfAborted()
+    return []
+  }
+}
+
+async function fetchText(web: WebRuntime, url: string, signal?: AbortSignal): Promise<string> {
+  const result = await web.fetch({ url }, signal)
+  return result.body.content
+}
+
+async function searchOpenReview(
   web: WebRuntime,
   query: string,
   signal: AbortSignal | undefined,
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
-  let result: Awaited<ReturnType<WebRuntime['search']>>
-  try {
-    result = await web.search({ query, maxResults }, signal)
-  } catch {
-    signal?.throwIfAborted()
-    return []
-  }
-  const webSources = result.sources.map((source: WebSearchSource) => ({
-    url: source.url,
-    provider: 'web' as const,
-    ...source.title === undefined ? {} : { title: source.title },
-    ...source.snippet === undefined ? {} : { snippet: source.snippet },
-    ...source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt },
-  }))
-  return Promise.all(webSources.map(async (source) => {
-    signal?.throwIfAborted()
-    if (source.snippet !== undefined) return source
-    try {
-      const fetched = await web.fetch({ url: source.url }, signal)
-      const snippet = fetched.body.content.slice(0, 1200)
-      return snippet.length === 0 ? source : { ...source, snippet }
-    } catch {
-      signal?.throwIfAborted()
-      return source
+  const url = `https://api2.openreview.net/notes?limit=${Math.max(1, Math.min(maxResults, 50))}&sort=tcdate:desc&content=${encodeURIComponent(query)}`
+  const value = JSON.parse(await fetchText(web, url, signal)) as { readonly notes?: readonly OpenReviewNote[] }
+  return (value.notes ?? []).map((note) => {
+    const id = note.id ?? note.forum
+    if (id === undefined || id.length === 0) return undefined
+    const content = note.content ?? {}
+    const title = textField(content.title)
+    const abstract = textField(content.abstract)
+    const venue = textField(content.venue)
+    return {
+      url: `https://openreview.net/forum?id=${encodeURIComponent(id)}`,
+      provider: 'openreview' as const,
+      ...(title === undefined ? {} : { title }),
+      ...(abstract === undefined ? {} : { snippet: abstract.slice(0, 1200) }),
+      ...(venue === undefined ? {} : { publishedAt: venue }),
     }
-  }))
+  }).filter((source): source is NonNullable<typeof source> => source !== undefined)
+}
+
+interface OpenReviewNote { readonly id?: string; readonly forum?: string; readonly content?: Readonly<Record<string, unknown>> }
+function textField(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined
+  if (typeof value === 'object' && value !== null && 'value' in value) return textField((value as { readonly value?: unknown }).value)
+  return undefined
+}
+
+async function searchSemanticScholar(
+  web: WebRuntime,
+  query: string,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<readonly ResearchLiteratureSource[]> {
+  const fields = 'title,abstract,url,publicationDate,venue'
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.max(1, Math.min(maxResults, 100))}&fields=${fields}`
+  const value = JSON.parse(await fetchText(web, url, signal)) as { readonly data?: readonly SemanticScholarPaper[] }
+  const results: ResearchLiteratureSource[] = []
+  for (const paper of value.data ?? []) {
+    const paperUrl = paper.url
+    if (paperUrl === undefined || paperUrl.length === 0) continue
+    results.push({
+      url: paperUrl,
+      provider: 'semantic-scholar',
+      ...(paper.title === undefined ? {} : { title: paper.title }),
+      ...(paper.abstract === undefined ? {} : { snippet: paper.abstract.slice(0, 1200) }),
+      ...(paper.publicationDate === undefined ? {} : { publishedAt: paper.publicationDate }),
+    })
+  }
+  return results
+}
+interface SemanticScholarPaper {
+  readonly title?: string
+  readonly abstract?: string
+  readonly url?: string
+  readonly publicationDate?: string
+  readonly venue?: string
+}
+
+async function searchAclAnthology(
+  web: WebRuntime,
+  query: string,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<readonly ResearchLiteratureSource[]> {
+  const url = `https://aclanthology.org/search/?q=${encodeURIComponent(query)}`
+  const html = await fetchText(web, url, signal)
+  const results: ResearchLiteratureSource[] = []
+  const pattern = /<a[^>]+href=["'](\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
+  for (const match of html.matchAll(pattern)) {
+    const path = match[1] ?? ''
+    const title = stripHtml(match[2] ?? '')
+    if (!/^\/[A-Z0-9][^/]*\/?$/u.test(path) || title.length === 0) continue
+    results.push({ url: `https://aclanthology.org${path}`, provider: 'acl-anthology', title })
+    if (results.length >= maxResults) break
+  }
+  return results
+}
+function stripHtml(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+async function searchOpenAlex(
+  web: WebRuntime,
+  query: string,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<readonly ResearchLiteratureSource[]> {
+  const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=${Math.max(1, Math.min(maxResults, 100))}`
+    + '&select=id,doi,title,publication_date,abstract_inverted_index'
+  const value = JSON.parse(await fetchText(web, url, signal)) as { readonly results?: readonly OpenAlexWork[] }
+  return (value.results ?? []).map((work) => {
+    const url = work.doi ?? work.id
+    if (url === undefined || url.length === 0) return undefined
+    return {
+      url,
+      provider: 'openalex' as const,
+      ...(work.title === undefined ? {} : { title: work.title }),
+      ...(work.publication_date === undefined ? {} : { publishedAt: work.publication_date }),
+      ...(work.abstract_inverted_index === undefined
+        ? {}
+        : { snippet: openAlexAbstract(work.abstract_inverted_index).slice(0, 1200) }),
+    }
+  }).filter((source): source is NonNullable<typeof source> => source !== undefined)
+}
+interface OpenAlexWork {
+  readonly id?: string
+  readonly doi?: string
+  readonly title?: string
+  readonly publication_date?: string
+  readonly abstract_inverted_index?: Readonly<Record<string, readonly number[]>>
+}
+function openAlexAbstract(index: Readonly<Record<string, readonly number[]>>): string {
+  const words: Array<[number, string]> = []
+  for (const [word, positions] of Object.entries(index)) for (const position of positions) words.push([position, word])
+  return words.sort(([left], [right]) => left - right).map(([, word]) => word).join(' ')
 }
 
 async function searchArxiv(
@@ -757,10 +916,12 @@ function xmlText(xml: string, tag: string): string {
 export function createSubagentResearchRunner(subagents: SubagentRuntime, provider: string): ResearchAgentRunner {
   return {
     async run(role, prompt, parent, signal) {
+      const agentOptions = inheritedAgentOptions(parent)
       const run = await subagents.start(provider, {
         parent,
         label: `research:${role}`,
-        prompt: [{ type: 'text', text: prompt }],
+        prompt: [{ type: 'text', text: `${CHINESE_OUTPUT_INSTRUCTION}\n\n${prompt}` }],
+        ...(agentOptions === undefined ? {} : { agentOptions }),
         signal: signal ?? new AbortController().signal,
       })
       try {
@@ -802,16 +963,18 @@ export function createSubagentResearchOcr(
             mediaType: 'image/png',
             name: `${input.fileName}.page-${page.pageNumber}.png`,
           })
+          const agentOptions = inheritedAgentOptions(parent)
           run = await subagents.start(provider, {
             parent,
             label: 'research:paper-ocr',
             prompt: [
               {
                 type: 'text',
-                text: `Perform faithful OCR for page ${page.pageNumber} of ${input.fileName}. Transcribe every readable word, equation, table label, and footnote in reading order. Preserve line breaks where they carry meaning. Mark uncertain characters as [?] and never summarize or invent missing text. Return only the transcription.`,
+                text: `${CHINESE_OUTPUT_INSTRUCTION}\n\n请对 ${input.fileName} 的第 ${page.pageNumber} 页进行忠实 OCR。按阅读顺序转录所有可读文字、公式、表格标签和脚注；保留有意义的换行；不确定字符标记为 [?]；不要总结或臆造缺失文本。只返回转录内容。`,
               },
               { type: 'image', attachment: image },
             ],
+            ...(agentOptions === undefined ? {} : { agentOptions }),
             signal: signal ?? new AbortController().signal,
           })
           const result = await run.result
@@ -838,6 +1001,19 @@ export function createSubagentResearchOcr(
       return text
     },
   }
+}
+
+const CHINESE_OUTPUT_INSTRUCTION = '除论文标题、URL、代码、公式和 JSON 字段名外，所有模型可见输出必须使用简体中文。'
+
+function inheritedAgentOptions(parent: Agent): AgentOptions | undefined {
+  const options = parent.options
+  const inherited: AgentOptions = {
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
+    ...(options.model === undefined ? {} : { model: options.model }),
+    ...(options.reasoningEffort === undefined ? {} : { reasoningEffort: options.reasoningEffort }),
+    ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+  }
+  return Object.keys(inherited).length === 0 ? undefined : inherited
 }
 
 /** Options used when assembling all configured Host capabilities. */
@@ -1081,4 +1257,8 @@ function parseInnovationEvaluation(text: string, threshold: number): ResearchInn
 
 function unreachableStage(stage: never): never {
   throw new Error(`unsupported research stage ${String(stage)}`)
+}
+
+function unreachableLiteratureSource(source: never): never {
+  throw new Error(`unsupported research literature source ${String(source)}`)
 }

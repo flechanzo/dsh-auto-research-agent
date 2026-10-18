@@ -6232,7 +6232,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchUploadRequest',
-    declaration: 'export interface ResearchUploadRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly paper?: FileAttachmentRef;\n    readonly papers?: readonly FileAttachmentRef[];\n}',
+    declaration: 'export interface ResearchUploadRequest {\n    readonly sessionId: SessionId;\n    readonly expectedRevision: number;\n    readonly paper?: FileAttachmentRef;\n    readonly papers?: readonly FileAttachmentRef[];\n    readonly supplemental?: boolean;\n}',
   },
   {
     name: 'ResolvedAlwaysRetryPolicy',

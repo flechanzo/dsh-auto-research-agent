@@ -77,7 +77,7 @@ function initialResearchState(label: string): ResearchState {
     nodeId: 'node-1', branchId: 'branch-1', stage: 'paper-upload', status: 'active', artifactRefs: [],
     memorySnapshot: {
       artifactIds: [], feedback: [], reviewerRoles: [],
-      directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['web', 'arxiv'],
+      directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'],
       directionFocuses: ['method', 'data', 'theory', 'efficiency', 'application'],
     },
   }
@@ -155,7 +155,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const [feedback, setFeedback] = useState('')
   const [choice, setChoice] = useState<'simulation' | 'plan'>('plan')
   const [directionWeights, setDirectionWeights] = useState<ResearchDirectionWeights>(DEFAULT_DIRECTION_WEIGHTS)
-  const [literatureSources, setLiteratureSources] = useState<readonly ResearchLiteratureSourceId[]>(['web', 'arxiv'])
+  const [literatureSources, setLiteratureSources] = useState<readonly ResearchLiteratureSourceId[]>(['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'])
   const [directionFocuses, setDirectionFocuses] = useState<readonly ResearchDirectionFocusId[]>(['method', 'data', 'theory', 'efficiency', 'application'])
   const [reviewers, setReviewers] = useState<readonly string[]>(REVIEWER_ROLES.map(item => item.role))
   const inputRef = useRef<HTMLInputElement>(null)
@@ -253,7 +253,12 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         if (!uploaded.ok) return uploaded
         papers.push(uploaded.value.file)
       }
-      return research.upload({ sessionId: workflowSessionId, expectedRevision: revision, papers }, tab.signal)
+      return research.upload({
+        sessionId: workflowSessionId,
+        expectedRevision: revision,
+        papers,
+        ...(selected.stage === 'literature-search' || selected.stage === 'targeted-literature-search' ? { supplemental: true } : {}),
+      }, tab.signal)
     })
   }
 
@@ -432,8 +437,11 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             <div className={css.subtle}>{t('research.literatureSources')}</div>
             <div className={css.reviewerRow}>
               {([
-                ['web', 'research.source.web'],
                 ['arxiv', 'research.source.arxiv'],
+                ['openreview', 'research.source.openreview'],
+                ['semantic-scholar', 'research.source.semanticScholar'],
+                ['acl-anthology', 'research.source.aclAnthology'],
+                ['openalex', 'research.source.openAlex'],
               ] as const).map(([source, labelKey]) => (
                 <label key={source} className={css.reviewer}>
                   <input type="checkbox" checked={literatureSources.includes(source)} onChange={(event) => { setLiteratureSources(current => event.target.checked ? [...new Set([...current, source])] : current.filter(item => item !== source)) }} />
@@ -443,13 +451,13 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             </div>
           </div>
         )}
-        {selected.stage === 'paper-upload' && (
+        {(selected.stage === 'paper-upload' || selected.stage === 'literature-search' || selected.stage === 'targeted-literature-search') && (
           <>
             <input ref={inputRef} className={css.fileInput} type="file" multiple accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />
             <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={() => inputRef.current?.click()}>
-              {t('research.upload')}
+              {selected.stage === 'paper-upload' ? t('research.upload') : t('research.uploadSupplemental')}
             </button>
-            <span className={css.subtle}>{t('research.uploadHint')}</span>
+            <span className={css.subtle}>{selected.stage === 'paper-upload' ? t('research.uploadHint') : t('research.uploadSupplementalHint')}</span>
           </>
         )}
         {canMutate && ((selected.status === 'awaiting-confirmation' || selected.status === 'confirmed')

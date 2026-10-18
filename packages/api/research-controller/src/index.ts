@@ -78,9 +78,9 @@ const researchStage = zod.enum([
 ])
 const researchStatus = zod.enum(['pending', 'active', 'awaiting-confirmation', 'confirmed', 'rejected', 'completed'])
 const researchKind = zod.enum(['paper', 'summary', 'problem', 'literature', 'idea', 'review', 'simulation', 'plan', 'decision'])
-const researchLiteratureSource = zod.enum(['web', 'arxiv'])
+const researchLiteratureSourceInput = zod.enum(['web', 'arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'])
 const researchDirectionFocus = zod.enum(['method', 'data', 'theory', 'efficiency', 'application'])
-const researchLiteratureSourceConfig = z.union(['web', 'arxiv'] as const)
+const researchLiteratureSourceConfig = z.union(['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'] as const)
 const researchDirectionWeights = zod.object({
   novelty: zod.number().int().min(0).max(100),
   impact: zod.number().int().min(0).max(100),
@@ -106,17 +106,25 @@ const researchArtifact = researchArtifactInput.transform((artifact): ResearchArt
 }))
 const researchMemoryInput = zod.object({
   artifactIds: zod.array(zod.string()), feedback: zod.array(zod.string()), reviewerRoles: zod.array(zod.string()),
-  directionWeights: researchDirectionWeights.optional(), literatureSources: zod.array(researchLiteratureSource).optional(),
+  directionWeights: researchDirectionWeights.optional(), literatureSources: zod.array(researchLiteratureSourceInput).optional(),
   directionFocuses: zod.array(researchDirectionFocus).optional(),
 })
-const researchMemory = researchMemoryInput.transform((memory): ResearchMemorySnapshot => ({
-  artifactIds: memory.artifactIds,
-  feedback: memory.feedback,
-  reviewerRoles: memory.reviewerRoles,
-  directionWeights: memory.directionWeights ?? { novelty: 30, impact: 25, feasibility: 25, reproducibility: 20 },
-  literatureSources: memory.literatureSources ?? ['web', 'arxiv'],
-  directionFocuses: memory.directionFocuses ?? ['method', 'data', 'theory', 'efficiency', 'application'],
-}))
+const researchMemory = researchMemoryInput.transform((memory): ResearchMemorySnapshot => {
+  // `web` was accepted by the first released research snapshot. Treat that
+  // legacy value as the new explicit-index defaults so it can never invoke
+  // the removed native Web Search operation after a Session is reopened.
+  const literatureSources = memory.literatureSources?.filter((source): source is ResearchLiteratureSourceId => source !== 'web')
+  return {
+    artifactIds: memory.artifactIds,
+    feedback: memory.feedback,
+    reviewerRoles: memory.reviewerRoles,
+    directionWeights: memory.directionWeights ?? { novelty: 30, impact: 25, feasibility: 25, reproducibility: 20 },
+    literatureSources: literatureSources === undefined || literatureSources.length === 0
+      ? ['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex']
+      : literatureSources,
+    directionFocuses: memory.directionFocuses ?? ['method', 'data', 'theory', 'efficiency', 'application'],
+  }
+})
 const researchNodeInput = zod.object({
   nodeId: zod.string(), parentNodeId: zod.string().optional(), branchId: zod.string(),
   stage: researchStage, status: researchStatus, artifactRefs: zod.array(zod.string()),
@@ -199,7 +207,7 @@ export interface Config {
   readonly planPath?: string
   /** Maximum uploaded paper bytes read into the summarizer prompt. */
   readonly maxPaperBytes?: number
-  /** Maximum Web sources included in one literature step. */
+  /** Maximum indexed paper sources included in one literature step. */
   readonly maxLiteratureResults?: number
   /** Literature backends enabled by default for new research Sessions. */
   readonly literatureSources?: ResearchLiteratureSourceId[]
@@ -226,7 +234,7 @@ export class ResearchController extends TypertRemoteService {
     planPath: z.string().default('research-plan.md'),
     maxPaperBytes: z.natural().min(1).default(20 * 1024 * 1024),
     maxLiteratureResults: z.natural().min(1).max(50).default(8),
-    literatureSources: z.array(researchLiteratureSourceConfig).min(1).default(['web', 'arxiv']),
+    literatureSources: z.array(researchLiteratureSourceConfig).min(1).default(['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex']),
     innovationScoreThreshold: z.natural().max(100).default(70),
     maxIdeaAttempts: z.natural().min(1).max(10).default(3),
     maxPdfPages: z.number().step(1).min(1).max(100).default(12),
@@ -239,7 +247,7 @@ export class ResearchController extends TypertRemoteService {
   private chain: Promise<unknown> = Promise.resolve()
 
   /**
-   * @param ctx - Host services for attachments, Web search, subagents, and Session resumption.
+   * @param ctx - Host services for attachments, indexed paper fetches, subagents, and Session resumption.
    * @param config - bounded research provider policy.
    */
   constructor(ctx: Context, config: Config = {}) {
@@ -273,6 +281,7 @@ export class ResearchController extends TypertRemoteService {
       state,
       ...(request.paper === undefined ? {} : { paper: request.paper }),
       ...(request.papers === undefined ? {} : { papers: request.papers }),
+      ...(request.supplemental === true ? { supplemental: true } : {}),
     })))
   }
 
@@ -436,6 +445,7 @@ export class ResearchController extends TypertRemoteService {
       readonly state: ResearchState
       readonly paper?: FileAttachmentRef
       readonly papers?: readonly FileAttachmentRef[]
+      readonly supplemental?: boolean
       readonly finalChoice?: 'simulation' | 'plan'
     },
   ): Promise<ResearchCommandValue> {
@@ -469,6 +479,9 @@ export class ResearchController extends TypertRemoteService {
       parent: agent,
       ...(prepared.paper === undefined ? {} : { paper: prepared.paper }),
       ...(prepared.papers === undefined ? {} : { papers: prepared.papers }),
+      ...(prepared.supplemental === true
+        ? { supplementalPapers: prepared.papers ?? (prepared.paper === undefined ? [] : [prepared.paper]) }
+        : {}),
       ...(prepared.finalChoice === undefined ? {} : { finalChoice: prepared.finalChoice }),
       signal,
     })
@@ -514,9 +527,11 @@ export class ResearchController extends TypertRemoteService {
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<void> {
     const recordPath = await fs.resolve(join(projectPath, 'research-conversation.md'))
-    const paperEntries = papers === undefined
-      ? await this.previousPaperEntries(fs, recordPath)
+    const previousEntries = await this.previousPaperEntries(fs, recordPath)
+    const newEntries = papers === undefined
+      ? []
       : papers.map(paper => `- ${paper.name} (${paper.bytes} bytes, ${paper.attachmentId})`)
+    const paperEntries = [...new Set([...previousEntries, ...newEntries])]
     const manifest = [
       '# 自动科研项目',
       '',

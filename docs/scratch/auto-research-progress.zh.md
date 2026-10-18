@@ -2,7 +2,7 @@
 
 [English](auto-research-progress.md) | 中文
 
-负责人：自动科研工作流 · 创建日期：2026-10-13 · 更新日期：2026-10-17 · 到期日期：2026-11-13 · 后续归档位置：科研工作流包和 Web UI README
+负责人：自动科研工作流 · 创建日期：2026-10-13 · 更新日期：2026-10-18 · 到期日期：2026-11-13 · 后续归档位置：科研工作流包和 Web UI README
 
 这个临时页面记录人工确认式科研工作流的实现检查点。每个检查点都会先提交并上传到 `flechanzo/dsh-auto-research-agent`，再开始下一个检查点。
 
@@ -15,7 +15,7 @@
 - **浏览器接入与恢复——当前阶段已完成。** Web 面板现在读写 Session-scoped `research` Remote，通过 `ctx.fileUpload` 上传论文字节，渲染返回的 artifact，使用带 revision 检查的 DAG sidecar 持久化，并在刷新后恢复状态。选择历史节点后可以按记录的 Session 边界恢复为新的会话分支；确认研究方向后会运行第二轮针对性文献调研；最终方案同时显示 Markdown 和写入文件路径。Host／Client project graph、生成的 Typert Remote artifact、API Remote 聚合和 Web profile 行均已接线。本地 Web profile 启动时不再出现 `research-controller` 导入警告。
 - **扫描版 PDF/OCR——本检查点已完成。** Host 读取器按页使用 PDF.js，保留可用的内嵌文本页，并把缺失或很短的页面文本视为不完整；随后按配置的页数、缩放和像素预算用 native canvas 渲染 PNG，通过 `AttachmentStore` 持久化，只把缺失或稀疏页面交给视觉 OCR subagent。返回文档会按原始页序合并内嵌文本和 OCR 页面，记录 `plain-text`、`embedded-text` 或 `ocr` 提取方式和检查页数，保留页码标记；OCR 不可用、缺少父 Agent、结果为空或单页失败时分别返回明确的 `PDF_OCR_UNAVAILABLE`、`PDF_OCR_PARENT_REQUIRED`、`PDF_OCR_EMPTY` 和 `PDF_OCR_FAILED` 错误。
 - **智能体选择入口——当前界面修复已完成。** 新会话首页现在把原有 preset 控件明确标为“智能体”，Web bundle 新增“自动科研智能体”。选择后会加载科研流程提示词，并保留论文、联网检索、子智能体、审查和方案工具。
-- **多源文献与创新点评审——当前检查点已完成。** 文献检索可以合并通用 Web 与 arXiv 机器学习分类（`cs.LG`、`cs.AI`、`cs.CL` 和 `stat.ML`），按 URL 去重，并把用户选择的来源带入确认方向后的第二轮针对性检索。问题提炼检查点提供创新性、影响力、可行性和可复现性权重调节。每个新生成或完善后的想法都会由全新的 `innovation-reviewer` 子 Agent 评估；评审只接收候选想法和提供的文献证据，不接收原始对话上下文。低于配置分数阈值或与已有论文高度重合的候选会被丢弃，并在配置次数内重新生成；通过的 artifact 会保留分数、阈值、重合结果和评审理由，供界面和最终方案使用。
+- **显式机器学习文献索引与模型路由——当前检查点已完成。** 自动科研流程不再调用 DeepSeek 原生 Web Search，只通过 fetch 能力访问用户选中的论文索引：arXiv 机器学习分类、包含 ICLR／NeurIPS／ICML 等顶会的 OpenReview、Semantic Scholar、ACL Anthology 和 OpenAlex。每个索引都可以独立失败，结果会去重，用户选择会带入确认方向后的第二轮检索。所有研究和 OCR 子 Agent 都继承当前对话的 provider、model、推理强度和 token 上限；提示词要求使用简体中文，同时保留标题、URL、代码、公式和 JSON 字段名。两个文献调研节点都支持上传补充论文，并把摘要追加到同一节点历史。
 - **同一面板交互修复——当前检查点已完成。** 一次文件选择可以上传多篇论文并进行跨论文阅读；右侧 Sidebar 在同一界面显示完整分支树和每个阶段可展开的内容，方向侧重支持多选，最终方案从当前分支持久化的 plan artifact 渲染，并在写入文件后显示。写入 Markdown 后，主对话和 Sidebar 仍保留全部已完成阶段内容；消息尾部的科研分支按钮会在当前 Session 创建 DAG 分支，不再打开左侧会话列表中的新对话。继续历史节点会保留该节点记忆，右侧分支树和中间主区共享同一份 revision 快照。
 - **按 Session 的项目工作区——当前检查点已完成。** 每个推进中的科研 Session 都会通过注入的文件系统在自身 cwd 下创建 `research-projects/<sessionId>`。`research-conversation.md` 和 `research-state.json` 在该目录保存可见 DAG 和最终方案输出；后续阶段写入会保留上传论文清单，配置的 `planPath` 也会留在项目目录内。
 - **项目写入的沙箱修复——当前检查点已完成。** 项目记录和最终 Markdown 写入现在会携带已解析的 Session 沙箱策略。如果 Agent 子上下文没有继承该服务，控制器会回退到根 Context，避免在 `workspace-write` 下上传或输出方案时误报文件访问被拒绝。
@@ -27,13 +27,13 @@
 
 - 科研状态转移的聚焦 Vitest 覆盖位于 `packages/workflow/workflow/tests/research.spec.ts`。
 - 协调器执行和确认门禁的聚焦 Vitest 覆盖位于 `packages/workflow/workflow/tests/research-coordinator.spec.ts`。
-- Web 面板使用 Host 实际返回结果；科研协调器聚焦套件通过 16 项，共享 research-session-store 套件通过 5 项，科研状态测试继续覆盖，受影响的 Host/Client TypeScript 项目编译通过，仓库 Client 构建完成。
+- Web 面板使用 Host 实际返回结果；科研协调器聚焦套件覆盖 19 项（包含全部显式论文索引解析、不调用原生 Web Search、索引独立失败、补充上传和当前模型路由），共享 research-session-store 套件继续覆盖，受影响的 Host/Client TypeScript 项目编译通过。
 - GitHub 基线上传已完成：[flechanzo/dsh-auto-research-agent](https://github.com/flechanzo/dsh-auto-research-agent)。
 - 之前的检查已通过：`pnpm install`、完整 `pnpm run build`、科研/UI 聚焦测试、`pnpm run test:docs`（20/20）、包依赖策略、包不变量和 Client 包规则。汇总 hygiene 仍保留两个问题：当前 Windows 权限无法让 NodeNext 检查创建临时符号链接，以及既有 ACP profile 的 Loader 根结构错误。
 
 ## 当前检查点
 
-本检查点的 arXiv 与 Web 文献检索、方向权重、隔离创新点评分、论文重合过滤、历史恢复、确认方向后的二次文献调研、多篇论文上传、同一面板分支导航、已完成回答保留、与当前 Session 同步的 Sidebar 和主 Chat transcript、消息尾部的同一 Session 科研分支、对话/轨迹切换栏中的分支选择、带沙箱策略的按 Session 项目工作区、Markdown 文件写入以及扫描版 PDF/OCR 路径已完成。发送第一条消息前，在新会话首页通过“智能体：自动科研智能体”下拉选择它；进入右侧“自动科研流程”后可一次选择多篇论文，在问题提炼节点调节方向侧重、多选研究侧重点和文献来源，再逐阶段确认。选择分支树中的历史节点后点击“从此阶段继续”会在当前面板创建分支，同时保留已有后续节点、全部分支和 artifact，之后可以切换分支继续修改；写入最终 Markdown 后仍可查看全部历史阶段。后续仍需加入具体的简单仿真适配器、deliverable 展示和端到端 Remote 覆盖。
+本检查点的显式机器学习论文索引检索、方向权重、隔离创新点评分、论文重合过滤、历史恢复、确认方向后的二次文献调研、多篇论文上传、同一面板分支导航、已完成回答保留、与当前 Session 同步的 Sidebar 和主 Chat transcript、消息尾部的同一 Session 科研分支、对话／轨迹切换栏中的分支选择、带沙箱策略的按 Session 项目工作区、Markdown 文件写入、中文模型输出、当前会话模型继承、文献阶段补充上传以及扫描版 PDF/OCR 路径已完成。发送第一条消息前，在新会话首页通过“智能体：自动科研智能体”下拉选择它；进入右侧“自动科研流程”后可一次选择多篇论文，在问题提炼节点调节方向侧重、多选研究侧重点和论文索引，再逐阶段确认。每次文献结果显示后，可以点击“上传补充文献”追加论文，再确认进入下一阶段。选择分支树中的历史节点后点击“从此阶段继续”会在当前面板创建分支，同时保留已有后续节点、全部分支和 artifact，之后可以切换分支继续修改；写入最终 Markdown 后仍可查看全部历史阶段。后续仍需加入具体的简单仿真适配器、deliverable 展示和端到端 Remote 覆盖。
 
 ## 开发备注
 

@@ -222,7 +222,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-research-controller`
 
 - `inject`: `attachments` · `fs` · `sessionController` · `storageDomain` · `subagents` · `typert` · `web`
-- `source`: [`packages/api/research-controller/src/index.ts:195`](../packages/api/research-controller/src/index.ts)
+- `source`: [`packages/api/research-controller/src/index.ts:203`](../packages/api/research-controller/src/index.ts)
 
 ```ts config-catalog
 /** Host limits and provider selection for automatic research. */
@@ -233,7 +233,7 @@ export interface Config {
   readonly planPath?: string
   /** Maximum uploaded paper bytes read into the summarizer prompt. */
   readonly maxPaperBytes?: number
-  /** Maximum Web sources included in one literature step. */
+  /** Maximum indexed paper sources included in one literature step. */
   readonly maxLiteratureResults?: number
   /** Literature backends enabled by default for new research Sessions. */
   readonly literatureSources?: ResearchLiteratureSourceId[]
@@ -249,8 +249,8 @@ export interface Config {
   readonly maxOcrPixels?: number
 }
 
-/** Literature backends available to the research workflow. */
-export type ResearchLiteratureSourceId = 'web' | 'arxiv'
+/** Explicit paper indexes available to the research workflow. */
+export type ResearchLiteratureSourceId = 'arxiv' | 'openreview' | 'semantic-scholar' | 'acl-anthology' | 'openalex'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-research-controller -->
 

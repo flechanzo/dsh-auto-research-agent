@@ -36,8 +36,13 @@ export type ResearchNodeStatus =
 /** Human decision recorded against a stage output. */
 export type ResearchDecision = 'confirm' | 'reject' | 'feedback'
 
-/** Search backends available to the research literature stages. */
-export type ResearchLiteratureSourceId = 'web' | 'arxiv'
+/** Search backends available to the research literature stages.
+ *
+ * These are explicit paper indexes. The generic DeepSeek Web Search tool is
+ * deliberately absent so a literature step never silently broadens its
+ * search to an unrelated web provider.
+ */
+export type ResearchLiteratureSourceId = 'arxiv' | 'openreview' | 'semantic-scholar' | 'acl-anthology' | 'openalex'
 
 /** User-selectable research emphasis areas shown as a multi-select. */
 export type ResearchDirectionFocusId =
@@ -69,8 +74,10 @@ export const DEFAULT_RESEARCH_DIRECTION_WEIGHTS: ResearchDirectionWeights = {
   novelty: 30, impact: 25, feasibility: 25, reproducibility: 20,
 }
 
-/** Default literature backends; arXiv is included for machine-learning coverage. */
-export const DEFAULT_RESEARCH_LITERATURE_SOURCES: readonly ResearchLiteratureSourceId[] = ['web', 'arxiv']
+/** Default literature indexes, including major ML conference proceedings. */
+export const DEFAULT_RESEARCH_LITERATURE_SOURCES: readonly ResearchLiteratureSourceId[] = [
+  'arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex',
+]
 
 /**
  * Render a stable human-facing label for a numbered idea branch.

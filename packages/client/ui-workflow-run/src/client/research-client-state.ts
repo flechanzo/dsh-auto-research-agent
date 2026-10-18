@@ -34,7 +34,7 @@ export function createResearchState(): ResearchState {
     nodeId: 'node-1', branchId: 'branch-1', stage: 'paper-upload', status: 'active', artifactRefs: [],
     memorySnapshot: {
       artifactIds: [], feedback: [], reviewerRoles: [],
-      directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['web', 'arxiv'],
+      directionWeights: { ...DEFAULT_DIRECTION_WEIGHTS }, literatureSources: ['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'],
       directionFocuses: [...DEFAULT_DIRECTION_FOCUSES],
     },
   }

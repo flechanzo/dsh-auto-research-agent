@@ -6,6 +6,7 @@ import {
   confirmResearchNode,
   createAttachmentPaperReader,
   createHostResearchCoordinator,
+  createSubagentResearchRunner,
   createWebLiteratureSearcher,
   createResearchState,
   rejectIdea,
@@ -101,8 +102,8 @@ describe('ResearchCoordinator', () => {
     state = confirm(state)
     await coordinator.advance({ state, parent })
     expect(prompts).toHaveLength(1)
-    expect(prompts[0]).toContain('every distinct, testable research problem')
-    expect(prompts[0]).toContain('Preserve separate answers for separate questions')
+    expect(prompts[0]).toContain('每一个彼此独立且可检验的研究问题')
+    expect(prompts[0]).toContain('保持不同问题的答案分开')
   })
 
   it('executes every confirmed stage and renders a final plan', async () => {
@@ -136,7 +137,7 @@ describe('ResearchCoordinator', () => {
     state = confirm(state)
     state = (await coordinator.advance({ state, parent, reviewerRoles: ['method', 'novelty', 'reproducibility'] })).state
     expect(searchQueries).toHaveLength(2)
-    expect(searchQueries[1]).toContain('Confirmed direction:')
+    expect(searchQueries[1]).toContain('已确认方向：')
     expect(searchQueries[1]).toContain('可校准的不确定性门控检索')
     state = confirm(state)
     state = (await coordinator.advance({ state, parent })).state
@@ -244,6 +245,22 @@ describe('ResearchCoordinator', () => {
     expect(node?.memorySnapshot.artifactIds.some(id => state.artifacts[id]?.kind === 'literature')).toBe(true)
   })
 
+  it('appends uploaded supplemental papers to either literature checkpoint', async () => {
+    const coordinator = new ResearchCoordinator(adapters())
+    let state = createResearchState()
+    state = appendResearchOutput(state, { stage: 'problem-summary', kind: 'problem', title: '问题', content: '缺口' })
+    state = confirm(state)
+    state = appendResearchOutput(state, { stage: 'literature-search', kind: 'literature', title: '文献', content: '证据' })
+    const result = await coordinator.advance({
+      state,
+      parent,
+      supplementalPapers: [{ attachmentId: AttachmentId('sha256:supplement'), name: 'supplement.txt', bytes: 10 }],
+    })
+    expect(result.artifact?.title).toBe('补充文献调研（1 篇）')
+    expect(result.state.nodes[result.state.selectedNodeId]?.stage).toBe('literature-search')
+    expect(result.artifact?.content).toContain('supplement.txt')
+  })
+
   it('discards low-score or overlapping candidates before exposing a passing idea', async () => {
     let reviewCount = 0
     const base = adapters()
@@ -298,7 +315,6 @@ describe('createWebLiteratureSearcher', () => {
     const fetchedUrls: string[] = []
     const xml = '<feed><entry><id>https://arxiv.org/abs/1234.5678</id><title> A ML paper </title><summary> A useful result </summary><published>2026-01-01T00:00:00Z</published></entry></feed>'
     const web = Object.setPrototypeOf({
-      async search() { return { sources: [{ url: 'https://arxiv.org/abs/1234.5678', title: 'Duplicate' }], truncated: false } },
       async fetch(request: { readonly url: string }) {
         fetchedUrls.push(request.url)
         return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content: xml } }
@@ -311,26 +327,23 @@ describe('createWebLiteratureSearcher', () => {
     expect(fetchedUrls[0]).toContain('cat%3Acs.LG')
   })
 
-  it('keeps primary web results when arXiv is blocked by the network policy', async () => {
+  it('does not call the native Web Search capability', async () => {
+    let searchCalls = 0
     const web = Object.setPrototypeOf({
-      async search() {
-        return { sources: [{ url: 'https://example.test/paper', title: 'Web result', snippet: 'web detail' }], truncated: false }
-      },
+      async search() { searchCalls += 1; throw new Error('native search must not be used') },
       async fetch(request: { readonly url: string }) {
-        if (request.url.includes('arxiv.org/api')) throw new Error('URL resolves to a non-public IP')
-        return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content: 'web detail' } }
+        return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content: '{"data":[]}' } }
       },
     }, WebRuntime.prototype) as WebRuntime
 
-    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['web', 'arxiv'] })).resolves.toEqual([
-      { url: 'https://example.test/paper', provider: 'web', title: 'Web result', snippet: 'web detail' },
-    ])
+    await createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['semantic-scholar'] })
+    expect(searchCalls).toBe(0)
   })
 
-  it('keeps arXiv results when the primary web search backend fails', async () => {
+  it('keeps index results when another index is unavailable', async () => {
     const web = Object.setPrototypeOf({
-      async search() { throw new Error('web search unavailable') },
       async fetch(request: { readonly url: string }) {
+        if (request.url.includes('openreview.net')) throw new Error('OpenReview unavailable')
         return {
           url: request.url,
           statusCode: 200,
@@ -340,9 +353,59 @@ describe('createWebLiteratureSearcher', () => {
       },
     }, WebRuntime.prototype) as WebRuntime
 
-    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['web', 'arxiv'] })).resolves.toEqual([
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['openreview', 'arxiv'] })).resolves.toEqual([
       { url: 'https://arxiv.org/abs/9876.5432', provider: 'arxiv', title: 'Fallback ML paper', snippet: 'Evidence' },
     ])
+  })
+
+  it('parses explicit conference and citation indexes without native search', async () => {
+    const web = Object.setPrototypeOf({
+      async fetch(request: { readonly url: string }) {
+        let content = ''
+        if (request.url.includes('arxiv.org/api')) {
+          content = '<feed><entry><id>https://arxiv.org/abs/1</id><title>arXiv ML</title></entry></feed>'
+        } else if (request.url.includes('openreview.net')) {
+          content = JSON.stringify({ notes: [{ id: 'abc', content: { title: { value: 'ICLR paper' }, abstract: { value: 'OpenReview abstract' }, venue: { value: 'ICLR 2026' } } }] })
+        } else if (request.url.includes('semanticscholar.org')) {
+          content = JSON.stringify({ data: [{ url: 'https://doi.org/10.1/s2', title: 'Citation paper', abstract: 'S2 abstract', publicationDate: '2026-01-01' }] })
+        } else if (request.url.includes('aclanthology.org')) {
+          content = '<html><a href="/2026.acl-long.1">ACL paper</a></html>'
+        } else {
+          content = JSON.stringify({ results: [{ id: 'https://openalex.org/W1', doi: 'https://doi.org/10.1/oa', title: 'OpenAlex paper', publication_date: '2026-01-01', abstract_inverted_index: { Open: [0], Alex: [1] } }] })
+        }
+        return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content } }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    const sources = await createWebLiteratureSearcher(web, 10).search('transformer', undefined, {
+      sources: ['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'],
+    })
+    expect(new Set(sources.map(source => source.provider))).toEqual(new Set(['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex']))
+    expect(sources.find(source => source.provider === 'openreview')?.title).toBe('ICLR paper')
+    expect(sources.find(source => source.provider === 'openalex')?.snippet).toBe('Open Alex')
+  })
+})
+
+describe('createSubagentResearchRunner', () => {
+  it('inherits the selected parent model route and Chinese output instruction', async () => {
+    let seen: { readonly agentOptions?: unknown; readonly prompt?: readonly { readonly text?: string }[] } | undefined
+    const subagents = Object.setPrototypeOf({
+      async start(
+        _provider: string,
+        request: { readonly agentOptions?: unknown; readonly prompt?: readonly { readonly text?: string }[] },
+      ) {
+        seen = request
+        return {
+          result: Promise.resolve({ stopReason: 'completed' as const, output: [{ type: 'text' as const, text: '中文结果' }] }),
+          async dispose() {},
+        }
+      },
+    }, SubagentRuntime.prototype) as SubagentRuntime
+    const runner = createSubagentResearchRunner(subagents, 'spawn')
+    const owner = { options: { provider: 'selected-provider', model: 'gpt-6-astra', maxTokens: 321 } } as Agent
+    await runner.run('problem-extractor', '请处理问题', owner)
+    expect(seen?.agentOptions).toEqual({ provider: 'selected-provider', model: 'gpt-6-astra', maxTokens: 321 })
+    expect(seen?.prompt?.[0]?.text).toContain('简体中文')
   })
 })
 

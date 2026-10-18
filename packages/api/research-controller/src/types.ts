@@ -11,8 +11,8 @@ export type ResearchStage =
   | 'idea-generation' | 'idea-refinement' | 'targeted-literature-search' | 'multi-agent-review'
   | 'simulation-or-final-plan' | 'final-plan'
 
-/** Literature backends available to the research workflow. */
-export type ResearchLiteratureSourceId = 'web' | 'arxiv'
+/** Explicit paper indexes available to the research workflow. */
+export type ResearchLiteratureSourceId = 'arxiv' | 'openreview' | 'semantic-scholar' | 'acl-anthology' | 'openalex'
 
 /** User-selectable research emphasis areas. */
 export type ResearchDirectionFocusId = 'method' | 'data' | 'theory' | 'efficiency' | 'application'
@@ -167,6 +167,8 @@ export interface ResearchUploadRequest {
   readonly paper?: FileAttachmentRef
   /** All papers selected in one upload operation. */
   readonly papers?: readonly FileAttachmentRef[]
+  /** Add papers to the current literature checkpoint instead of starting the workflow. */
+  readonly supplemental?: boolean
 }
 
 /** Confirm the selected output and run exactly one next coordinator step. */
