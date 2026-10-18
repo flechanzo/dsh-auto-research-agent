@@ -415,24 +415,22 @@ export class ResearchCoordinator {
 
   private async generateIdea(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     const problem = this.latestArtifact(request.state, 'problem')
-    const literature = this.latestArtifact(request.state, 'literature')
     return this.generateEvaluatedIdea(request, {
       stage: 'idea-generation',
       title: '候选改进想法',
       problem: problem.content,
-      literature: literature.content,
+      literature: this.researchEvidence(request.state),
     })
   }
 
   private async refineIdea(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
     const idea = this.latestArtifact(request.state, 'idea')
-    const literature = this.latestArtifact(request.state, 'literature')
     const feedback = selectedResearchNode(request.state).memorySnapshot.feedback.join('\n') || '没有额外反馈；补齐可复现细节。'
     return this.generateEvaluatedIdea(request, {
       stage: 'idea-refinement',
       title: '根据反馈完善后的想法',
       problem: `Existing candidate:\n${idea.content}\n\nUser feedback:\n${feedback}`,
-      literature: literature.content,
+      literature: this.researchEvidence(request.state),
       refinement: true,
     })
   }
@@ -472,14 +470,20 @@ export class ResearchCoordinator {
         createdAt: Date.now(),
       }
       assertInnovationClaim(candidate)
+      const candidateSources = await this.adapters.literature.search(
+        `候选创新点专项查重检索。请检索已发表且可以直接比较的工作，重点寻找与以下研究问题、机制、训练目标、数据或实验设置高度相似的论文。研究问题：\n${compactSearchText(input.problem, 2400)}\n\n候选创新点：\n${compactSearchText(idea, 3600)}`,
+        request.signal,
+        { sources: memory.literatureSources },
+      )
+      const candidateEvidence = formatLiteratureSources(candidateSources)
       const evaluationText = await this.adapters.agents.run(
         'innovation-reviewer',
-        `你是完全独立的创新性专家。不要推断或索取原始对话、用户反馈、隐藏状态或论文全文；只能评价下面给出的候选方案和文献证据。检查候选方案是否与引用工作高度重合。只返回严格 JSON，不要 Markdown：{"score":0,"overlap":false,"rationale":"……"}。score 必须是 0 到 100 的整数；当候选方案实质重复引用论文时 overlap 为 true；rationale 必须用简体中文。\n\n候选方案：\n${idea}\n\n文献证据：\n${input.literature}`,
+        `你是完全独立的创新性专家。不要推断或索取原始对话、用户反馈、隐藏状态或论文全文；只能评价下面给出的候选方案和文献证据。你必须把上传论文摘要、初始相关文献、确认方向后的针对性文献，以及本候选点专项检索到的已发表论文逐篇比较。逐项比较研究机制、核心模块、训练目标、数据与实验设置、指标和贡献声明；只要任意一篇已有论文与候选方案实质高度重合，就将 overlap 设为 true。专项检索没有返回结果时，证据不足，必须把 score 设为 0 且 overlap 设为 true，不能把“没有检索到”当作“没有重复”。只返回严格 JSON，不要 Markdown：{"score":0,"overlap":false,"rationale":"……"}。score 必须是 0 到 100 的整数；rationale 必须用简体中文。\n\n候选方案：\n${idea}\n\n上传论文摘要与当前分支全部相关文献证据：\n${input.literature}\n\n本候选点专项检索结果：\n${candidateEvidence}`,
         request.parent,
         request.signal,
       )
       const evaluation = parseInnovationEvaluation(evaluationText, threshold)
-      if (evaluation.score >= threshold && !evaluation.overlap) {
+      if (candidateSources.length > 0 && evaluation.score >= threshold && !evaluation.overlap) {
         const state = appendResearchOutput(request.state, {
           stage: input.stage,
           kind: 'idea',
@@ -490,7 +494,9 @@ export class ResearchCoordinator {
         const latest = this.latestArtifact(state, 'idea')
         return { state, artifact: latest }
       }
-      lastFailure = evaluation.rationale
+      lastFailure = candidateSources.length === 0
+        ? '候选点专项检索没有返回已发表论文证据，无法通过创新性查重。'
+        : evaluation.rationale
         || (evaluation.overlap ? 'candidate overlaps existing literature' : `score ${evaluation.score} is below threshold ${threshold}`)
     }
     throw new Error(`INNOVATION_SCORE_BELOW_THRESHOLD: no candidate passed the ${threshold} score and overlap checks after ${maxAttempts} attempts`)
@@ -500,6 +506,7 @@ export class ResearchCoordinator {
     let state = request.state
     if (request.reviewerRoles !== undefined) state = setResearchReviewerRoles(state, request.reviewerRoles)
     const idea = this.latestArtifact(state, 'idea')
+    const evidence = this.researchEvidence(state)
     const roles = selectedResearchNode(state).memorySnapshot.reviewerRoles
     const selectedRoles = roles.length > 0 ? roles : ['method', 'novelty', 'reproducibility']
     const roleMap: Record<string, ResearchAgentRole> = {
@@ -510,7 +517,7 @@ export class ResearchCoordinator {
       const role = roleMap[label] ?? 'method-reviewer'
       const review = await this.adapters.agents.run(
         role,
-        `请用简体中文以“${label}”审查者身份评审下面的研究想法。指出一个具体优点、一个阻塞性问题，以及一项明确的修改或测试；同时检查明确写出的创新性主张。\n\n${idea.content}`,
+        `请用简体中文以“${label}”审查者身份评审下面的研究想法。指出一个具体优点、一个阻塞性问题，以及一项明确的修改或测试；同时检查明确写出的创新性主张。仅根据给出的研究想法和文献证据判断，不要索取原始对话。\n\n研究想法：\n${idea.content}\n\n文献证据：\n${evidence}`,
         request.parent,
         request.signal,
       )
@@ -572,7 +579,7 @@ export class ResearchCoordinator {
     return this.withLatestArtifact(state)
   }
 
-  private async finishPlan(request: ResearchAdvanceRequest): Promise<ResearchAdvanceResult> {
+  private finishPlan(request: ResearchAdvanceRequest): ResearchAdvanceResult {
     const node = selectedResearchNode(request.state)
     const artifacts = node.memorySnapshot.artifactIds
       .map(artifactId => request.state.artifacts[artifactId])
@@ -601,6 +608,24 @@ export class ResearchCoordinator {
       if (artifact?.kind === kind) return artifact
     }
     throw new Error(`research artifact of kind "${kind}" is missing from the selected branch`)
+  }
+
+  /**
+   * Collect every paper summary and literature checkpoint visible in the branch.
+   * @param state - Current immutable research state.
+   * @returns Evidence text for the isolated innovation reviewer.
+   */
+  private researchEvidence(state: ResearchState): string {
+    const node = selectedResearchNode(state)
+    const evidence = node.memorySnapshot.artifactIds
+      .map(artifactId => state.artifacts[artifactId])
+      .filter((artifact): artifact is ResearchArtifact => artifact !== undefined)
+      .filter(artifact => artifact.kind === 'summary' || artifact.kind === 'literature')
+    if (evidence.length === 0) return '（当前分支没有可供创新性查重的上传论文摘要或文献证据。）'
+    return evidence.map((artifact, index) => {
+      const category = artifact.kind === 'summary' ? '上传论文摘要' : '相关文献检索结果'
+      return `### 证据 ${index + 1}：${category}｜${artifact.title}\n${artifact.content}`
+    }).join('\n\n---\n\n')
   }
 
   private withLatestArtifact(state: ResearchState): ResearchAdvanceResult {
@@ -1253,6 +1278,24 @@ function parseInnovationEvaluation(text: string, threshold: number): ResearchInn
     throw new Error('INNOVATION_REVIEW_INVALID: expected integer score, boolean overlap, and rationale')
   }
   return { score, threshold, overlap, rationale: rationale.trim() }
+}
+
+/** Format candidate-specific index results for the isolated innovation reviewer. */
+function formatLiteratureSources(sources: readonly ResearchLiteratureSource[]): string {
+  if (sources.length === 0) return '（本候选点专项检索没有返回结果，不能据此证明不存在重复工作。）'
+  return sources.map((source, index) => {
+    const title = source.title ?? source.url
+    const provider = source.provider === undefined ? '未标明来源' : source.provider
+    const publishedAt = source.publishedAt === undefined ? '' : `\n发表信息：${source.publishedAt}`
+    const snippet = source.snippet === undefined ? '' : `\n摘要或检索片段：${source.snippet}`
+    return `${index + 1}. ${title}\n来源：${provider}\nURL：${source.url}${publishedAt}${snippet}`
+  }).join('\n\n')
+}
+
+/** Keep index query URLs bounded while retaining the candidate's defining terms. */
+function compactSearchText(value: string, maxLength: number): string {
+  const compact = value.replace(/\s+/gu, ' ').trim()
+  return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength)}…`
 }
 
 function unreachableStage(stage: never): never {

@@ -136,9 +136,11 @@ describe('ResearchCoordinator', () => {
     expect(state.nodes[state.selectedNodeId]?.stage).toBe('targeted-literature-search')
     state = confirm(state)
     state = (await coordinator.advance({ state, parent, reviewerRoles: ['method', 'novelty', 'reproducibility'] })).state
-    expect(searchQueries).toHaveLength(2)
-    expect(searchQueries[1]).toContain('已确认方向：')
-    expect(searchQueries[1]).toContain('可校准的不确定性门控检索')
+    expect(searchQueries).toHaveLength(4)
+    expect(searchQueries[1]).toContain('候选创新点专项查重检索')
+    expect(searchQueries[2]).toContain('候选创新点专项查重检索')
+    expect(searchQueries[3]).toContain('已确认方向：')
+    expect(searchQueries[3]).toContain('可校准的不确定性门控检索')
     state = confirm(state)
     state = (await coordinator.advance({ state, parent })).state
     expect(state.nodes[state.selectedNodeId]?.stage).toBe('simulation-or-final-plan')
@@ -157,6 +159,47 @@ describe('ResearchCoordinator', () => {
     expect(final.artifact?.source).toBe('workspace/research-plan.md')
     expect(final.state.nodes[final.state.selectedNodeId]?.stage).toBe('final-plan')
     expect(final.state.nodes[final.state.selectedNodeId]?.status).toBe('completed')
+  })
+
+  it('gives the isolated innovation reviewer all branch evidence and candidate search results', async () => {
+    const reviewerPrompts: string[] = []
+    const searchQueries: string[] = []
+    const base = adapters(searchQueries)
+    const coordinator = new ResearchCoordinator({
+      ...base,
+      agents: {
+        async run(role, prompt, owner, signal) {
+          if (role === 'innovation-reviewer') reviewerPrompts.push(prompt)
+          return base.agents.run(role, prompt, owner, signal)
+        },
+      },
+    })
+    let state = createResearchState()
+    state = appendResearchOutput(state, {
+      stage: 'paper-read', kind: 'summary', title: '上传论文摘要', content: '上传论文提出固定深度检索。',
+    })
+    state = confirm(state)
+    state = appendResearchOutput(state, {
+      stage: 'problem-summary', kind: 'problem', title: '研究问题', content: '分布偏移会使检索证据失效。',
+    })
+    state = confirm(state)
+    state = appendResearchOutput(state, {
+      stage: 'literature-search', kind: 'literature', title: '初始相关文献', content: '初始论文：自适应检索基线。',
+    })
+    state = confirm(state)
+    state = appendResearchOutput(state, {
+      stage: 'literature-search', kind: 'literature', title: '补充相关文献', content: '补充论文：跨域校准方法。',
+    })
+    state = confirm(state)
+
+    await coordinator.advance({ state, parent })
+
+    expect(reviewerPrompts).toHaveLength(1)
+    expect(reviewerPrompts[0]).toContain('上传论文摘要')
+    expect(reviewerPrompts[0]).toContain('初始论文：自适应检索基线')
+    expect(reviewerPrompts[0]).toContain('补充论文：跨域校准方法')
+    expect(reviewerPrompts[0]).toContain('本候选点专项检索结果')
+    expect(searchQueries.some(query => query.includes('候选创新点专项查重检索'))).toBe(true)
   })
 
   it('passes the resolved sandbox policy to the final plan writer', async () => {
@@ -297,6 +340,27 @@ describe('ResearchCoordinator', () => {
       agents: {
         async run(role, prompt, owner, signal) {
           if (role === 'innovation-reviewer') return '{"score": 40, "overlap": false, "rationale": "证据不足。"}'
+          return base.agents.run(role, prompt, owner, signal)
+        },
+      },
+    })
+    let state = createResearchState()
+    state = appendResearchOutput(state, { stage: 'problem-summary', kind: 'problem', title: '问题', content: '缺口' })
+    state = confirm(state)
+    state = appendResearchOutput(state, { stage: 'literature-search', kind: 'literature', title: '文献', content: '证据' })
+    state = confirm(state)
+    await expect(coordinator.advance({ state, parent })).rejects.toThrow('INNOVATION_SCORE_BELOW_THRESHOLD')
+  })
+
+  it('fails closed when candidate-specific literature search has no results', async () => {
+    const base = adapters()
+    const coordinator = new ResearchCoordinator({
+      ...base,
+      innovation: { scoreThreshold: 70, maxAttempts: 1 },
+      literature: { async search() { return [] } },
+      agents: {
+        async run(role, prompt, owner, signal) {
+          if (role === 'innovation-reviewer') return '{"score":99,"overlap":false,"rationale":"看起来有新意。"}'
           return base.agents.run(role, prompt, owner, signal)
         },
       },
