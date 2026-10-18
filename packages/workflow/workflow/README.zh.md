@@ -11,7 +11,7 @@ kind: "package-reference"
 
 运行一段 JavaScript 编排脚本，将工作扇出给 subagent，并返回最终 JSON 值。脚本通过 `workflow` 工具使用 `agent()`、`parallel()`、`pipeline()`、`phase()` 和 `log()`。每次运行都归调用方所有，记录子 agent（智能体）归属，并在 dispose（资源释放）期间等待脚本与子 agent 清理完成。调用方提供执行引擎。
 
-仅 Host 使用的 `ResearchCoordinator` 按确认推进论文阅读与文献研究 DAG，委派摘要、想法生成、完善和并行审查；确认研究方向后会再做一次针对性文献调研，并从当前分支渲染 Markdown 方案。PDF 读取器使用 PDF.js 提取内嵌文本；文本层缺失或过短时，会用 native canvas 渲染有上限的页面，并把图片交给视觉 OCR subagent。`createHostResearchCoordinator()` 组装附件、Web、subagent、OCR 和 Session 文件系统适配器。
+仅 Host 使用的 `ResearchCoordinator` 按确认推进论文阅读与文献研究 DAG，委派摘要、想法生成、完善和并行审查；确认研究方向后会再次查询明确的论文索引，并从当前分支渲染 Markdown 方案。PDF 读取器使用 PDF.js 提取内嵌文本；文本层缺失或过短时，会用 native canvas 渲染有上限的页面，并把图片交给视觉 OCR subagent。`createHostResearchCoordinator()` 组装附件、Web fetch、subagent、OCR 和 Session 文件系统适配器。
 
 ## 目录
 
@@ -60,7 +60,7 @@ return { reviewed: reviews.length }
 
 ### 人工确认式科研运行
 
-`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取一个或多个持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 `ctx.web` 做初始和针对性检索，应用用户选择的研究方向侧重，运行命名的 subagent 角色，先返回等待确认的最终 Markdown 预览，确认后才通过 `ctx.fs` 写入文件，并把仿真保留为显式可选适配器。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
+`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取一个或多个持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 Web fetch 查询明确的 arXiv、OpenReview、Semantic Scholar、ACL Anthology 和 OpenAlex 索引，应用用户选择的研究方向侧重，运行当前 Session 模型路由下的命名 subagent 角色，先返回等待确认的最终 Markdown 预览，确认后才通过 `ctx.fs` 写入文件，并把仿真保留为显式可选适配器。科研 Session 不会暴露 DeepSeek 原生 `web_search` 工具。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
 
 -----
 

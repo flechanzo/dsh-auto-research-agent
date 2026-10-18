@@ -147,6 +147,10 @@
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
+              # Research literature is resolved only through the coordinator's
+              # explicit paper indexes; never expose the native DeepSeek
+              # web_search tool to a research Session.
+              search: false
               fetch: true
               searchTimeoutMs: 60000
           - id: present

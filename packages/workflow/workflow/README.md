@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 Run JavaScript orchestration scripts through the `workflow` tool. Scripts use `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()` and return JSON; the caller supplies the execution engine and owns cleanup.
 
-The Host-only `ResearchCoordinator` advances confirmed research stages, delegates model work, searches again after direction approval, and renders a Markdown plan. PDFs use PDF.js and bounded native-canvas OCR when text is missing or sparse. `createHostResearchCoordinator()` assembles attachment, Web, subagent, OCR, and Session filesystem adapters.
+The Host-only `ResearchCoordinator` advances confirmed research stages, delegates model work, searches explicit paper indexes again after direction approval, and renders a Markdown plan. PDFs use PDF.js and bounded native-canvas OCR when text is missing or sparse. `createHostResearchCoordinator()` assembles attachment, Web fetch, subagent, OCR, and Session filesystem adapters.
 
 ## Table of Contents
 
@@ -60,7 +60,7 @@ A script that does not parse, a malformed meta block, an unavailable provider ro
 
 ### Human-confirmed research runs
 
-`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads one or more durable `FileAttachmentRef` values, extracts normal text or renders at most the configured number of PDF pages for OCR, searches through `ctx.web` for the initial problem and approved direction, applies the selected direction focus areas, runs named subagent roles, returns the final Markdown as an awaiting-confirmation preview, and writes it through `ctx.fs` only after that preview is confirmed. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
+`ResearchCoordinator.advance()` accepts one immutable `ResearchState` and returns one new state plus the newly visible artifact. It refuses to advance an `awaiting-confirmation` node. The standard Host assembly reads one or more durable `FileAttachmentRef` values, extracts normal text or renders at most the configured number of PDF pages for OCR, fetches explicit arXiv, OpenReview, Semantic Scholar, ACL Anthology, and OpenAlex indexes for the initial problem and approved direction, applies the selected direction focus areas, runs named subagent roles on the current Session model route, returns the final Markdown as an awaiting-confirmation preview, and writes it through `ctx.fs` only after that preview is confirmed. The native DeepSeek `web_search` tool is not exposed to research Sessions. Rejected ideas use a fresh branch whose memory retains the problem and literature evidence without mutating the rejected branch.
 
 -----
 

@@ -11,10 +11,10 @@
 - **干净仓库基线——已完成。** 仓库已重新初始化为新的 `main` 历史，并上传到项目仓库。
 - **科研 DAG 模型——第一阶段已完成。** `@deepseek-ai/dsh-workflow/research` 现在描述阶段输出、不可变节点、分支创建、历史节点继续、用户决策、反馈以及显式创新点检查。
 - **Web 工作流界面——第一阶段已完成。** 现有工作流 UI 在会话标题栏增加“自动科研流程”入口，并在右侧 Sidebar 提供论文上传、阶段输出、确认、反馈、拒绝分支、历史导航、审查角色和仿真/科研方案选择。
-- **Host 协调器——第二阶段已完成。** `ResearchCoordinator` 现在只推进已确认节点，读取持久化论文附件，通过 `ctx.web` 检索，委派摘要、问题提炼、想法生成、完善以及方法／创新性／可复现性并行审查，在独立分支中保留被拒绝想法，并在使用 `createHostResearchCoordinator()` 组装时通过 `ctx.fs` 写入当前分支的 Markdown 方案。
+- **Host 协调器——第二阶段已完成。** `ResearchCoordinator` 现在只推进已确认节点，通过 `ctx.web` fetch 明确的论文索引，读取持久化论文附件，委派摘要、问题提炼、想法生成、完善以及方法／创新性／可复现性并行审查，在独立分支中保留被拒绝想法，并在使用 `createHostResearchCoordinator()` 组装时通过 `ctx.fs` 写入当前分支的 Markdown 方案。
 - **浏览器接入与恢复——当前阶段已完成。** Web 面板现在读写 Session-scoped `research` Remote，通过 `ctx.fileUpload` 上传论文字节，渲染返回的 artifact，使用带 revision 检查的 DAG sidecar 持久化，并在刷新后恢复状态。选择历史节点后可以按记录的 Session 边界恢复为新的会话分支；确认研究方向后会运行第二轮针对性文献调研；最终方案同时显示 Markdown 和写入文件路径。Host／Client project graph、生成的 Typert Remote artifact、API Remote 聚合和 Web profile 行均已接线。本地 Web profile 启动时不再出现 `research-controller` 导入警告。
 - **扫描版 PDF/OCR——本检查点已完成。** Host 读取器按页使用 PDF.js，保留可用的内嵌文本页，并把缺失或很短的页面文本视为不完整；随后按配置的页数、缩放和像素预算用 native canvas 渲染 PNG，通过 `AttachmentStore` 持久化，只把缺失或稀疏页面交给视觉 OCR subagent。返回文档会按原始页序合并内嵌文本和 OCR 页面，记录 `plain-text`、`embedded-text` 或 `ocr` 提取方式和检查页数，保留页码标记；OCR 不可用、缺少父 Agent、结果为空或单页失败时分别返回明确的 `PDF_OCR_UNAVAILABLE`、`PDF_OCR_PARENT_REQUIRED`、`PDF_OCR_EMPTY` 和 `PDF_OCR_FAILED` 错误。
-- **智能体选择入口——当前界面修复已完成。** 新会话首页现在把原有 preset 控件明确标为“智能体”，Web bundle 新增“自动科研智能体”。选择后会加载科研流程提示词，并保留论文、联网检索、子智能体、审查和方案工具。
+- **智能体选择入口——当前界面修复已完成。** 新会话首页现在把原有 preset 控件明确标为“智能体”，Web bundle 新增“自动科研智能体”。选择后会加载科研流程提示词，并保留论文上传、论文索引 fetch、子智能体、审查和方案工具；该 preset 会关闭 DeepSeek 原生 `web_search`。
 - **显式机器学习文献索引与模型路由——当前检查点已完成。** 自动科研流程不再调用 DeepSeek 原生 Web Search，只通过 fetch 能力访问用户选中的论文索引：arXiv 机器学习分类、包含 ICLR／NeurIPS／ICML 等顶会的 OpenReview、Semantic Scholar、ACL Anthology 和 OpenAlex。每个索引都可以独立失败，结果会去重，用户选择会带入确认方向后的第二轮检索。所有研究和 OCR 子 Agent 都继承当前对话的 provider、model、推理强度和 token 上限；提示词要求使用简体中文，同时保留标题、URL、代码、公式和 JSON 字段名。两个文献调研节点都支持上传补充论文，并把摘要追加到同一节点历史。
 - **同一面板交互修复——当前检查点已完成。** 一次文件选择可以上传多篇论文并进行跨论文阅读；右侧 Sidebar 在同一界面显示完整分支树和每个阶段可展开的内容，方向侧重支持多选，最终方案从当前分支持久化的 plan artifact 渲染，并在写入文件后显示。写入 Markdown 后，主对话和 Sidebar 仍保留全部已完成阶段内容；消息尾部的科研分支按钮会在当前 Session 创建 DAG 分支，不再打开左侧会话列表中的新对话。继续历史节点会保留该节点记忆，右侧分支树和中间主区共享同一份 revision 快照。
 - **按 Session 的项目工作区——当前检查点已完成。** 每个推进中的科研 Session 都会通过注入的文件系统在自身 cwd 下创建 `research-projects/<sessionId>`。`research-conversation.md` 和 `research-state.json` 在该目录保存可见 DAG 和最终方案输出；后续阶段写入会保留上传论文清单，配置的 `planPath` 也会留在项目目录内。
