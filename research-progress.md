@@ -27,6 +27,7 @@ Updated: 2026-10-19
 - Host and Client project references, generated Typert Remote artifacts, Web bundle rows, and the API Remote aggregation are wired and typechecked.
 - The new-session preset control is now visibly labeled `Agent`, and the Web bundle includes a selectable `Auto research agent` preset with the research workflow prompt and existing research tools.
 - The automatic research panel now has a visual hierarchy with a status header, branch and timeline cards, a highlighted current artifact card, grouped upload and decision controls, semantic status pills, stronger focus states, and a narrow-window layout. The same treatment is applied to the header and message-tail branch actions.
+- The main conversation transcript now keeps stage cards static on hover and lets the user click or press Enter/Space to expand or collapse the current stage content.
 
 ## Current milestone
 

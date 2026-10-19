@@ -585,11 +585,25 @@
 }
 
 .mainTranscriptHeader,
-.mainTranscriptMessageHeader {
+.mainTranscriptMessageHeader,
+.mainTranscriptMessageMeta {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+}
+
+.mainTranscriptMessageMeta {
+  flex: none;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+}
+
+.mainTranscriptToggle {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .mainTranscriptMessages {
@@ -608,7 +622,6 @@
   border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-bg-base);
   cursor: pointer;
-  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
 }
 
 .mainTranscriptMessage:hover,
@@ -625,6 +638,16 @@
 .mainTranscriptMessageSelected {
   border-color: var(--dsw-alias-state-business-primary);
   box-shadow: inset 3px 0 0 var(--dsw-alias-state-business-primary);
+}
+
+.mainTranscriptMessage:not(.mainTranscriptMessageExpanded) .mainTranscriptContent {
+  max-height: 120px;
+  overflow: hidden;
+}
+
+.mainTranscriptMessageExpanded .mainTranscriptContent {
+  max-height: 360px;
+  overflow: auto;
 }
 
 .mainTranscriptArtifact {

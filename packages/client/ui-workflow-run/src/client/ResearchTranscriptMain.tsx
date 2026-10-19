@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   ResearchArtifact,
@@ -94,6 +94,7 @@ function publishCommand(
 /** Render every completed research task in the active Chat view. */
 export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTranscriptMainProps): ReactNode {
   const snapshot = useResearchSession(research, sessionId)
+  const [expandedNodes, setExpandedNodes] = useState<ReadonlySet<string>>(() => new Set())
   if (snapshot === undefined) return null
   // `read` returns an in-memory upload root for sessions that have never
   // started research. Keep the main Chat surface unchanged until a paper has
@@ -110,6 +111,18 @@ export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTrans
     void research.selectNode({ sessionId, expectedRevision: snapshot.revision, nodeId })
       .then((result) => { publishCommand(sessionId, result) })
   }
+  const toggleNode = (nodeId: string): void => {
+    setExpandedNodes((current) => {
+      const next = new Set(current)
+      if (next.has(nodeId)) next.delete(nodeId)
+      else next.add(nodeId)
+      return next
+    })
+  }
+  const activateNode = (nodeId: string): void => {
+    selectNode(nodeId)
+    toggleNode(nodeId)
+  }
   return (
     <section className={css.mainTranscript} data-research-main-transcript data-research-selected-node={selectedId}>
       <div className={css.mainTranscriptHeader}>
@@ -120,25 +133,34 @@ export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTrans
         {nodes.map((node) => {
           const artifacts = latestArtifacts(snapshot.state, node)
           const selected = node.nodeId === selectedId
+          const expanded = expandedNodes.has(node.nodeId)
           return (
             <article
               key={node.nodeId}
-              className={selected ? `${css.mainTranscriptMessage} ${css.mainTranscriptMessageSelected}` : css.mainTranscriptMessage}
+              className={[
+                css.mainTranscriptMessage,
+                selected ? css.mainTranscriptMessageSelected : undefined,
+                expanded ? css.mainTranscriptMessageExpanded : undefined,
+              ].filter(Boolean).join(' ')}
               data-research-main-node={node.nodeId}
               role="button"
               tabIndex={0}
               aria-current={selected ? 'step' : undefined}
-              onClick={() => { selectNode(node.nodeId) }}
+              aria-expanded={expanded}
+              onClick={() => { activateNode(node.nodeId) }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  selectNode(node.nodeId)
+                  activateNode(node.nodeId)
                 }
               }}
             >
               <div className={css.mainTranscriptMessageHeader}>
                 <span className={css.cardTitle}>{stageText(node.stage, t)}</span>
-                <span className={css.subtle}>{statusText(node.status, t)}</span>
+                <span className={css.mainTranscriptMessageMeta}>
+                  <span className={css.subtle}>{statusText(node.status, t)}</span>
+                  <span className={css.mainTranscriptToggle}>{expanded ? t('research.collapse') : t('research.expand')}</span>
+                </span>
               </div>
               {artifacts.length === 0
                 ? <p className={css.mainTranscriptEmpty}>{t('research.emptyArtifact')}</p>

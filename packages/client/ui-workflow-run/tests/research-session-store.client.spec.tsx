@@ -76,7 +76,10 @@ describe('research session store', () => {
     historical = { ...historical, selectedNodeId: 'node-2' }
     const remote: Pick<ResearchRemote, 'read' | 'selectNode'> = {
       read: async () => ({ ok: true, value: { sessionId, revision: 3, state: historical } }),
-      selectNode: vi.fn(),
+      selectNode: vi.fn(async () => ({
+        ok: true as const,
+        value: { snapshot: { sessionId, revision: 3, state: historical } },
+      })),
     }
 
     const view = render(<ResearchTranscriptMain sessionId={sessionId} research={remote} t={makeTranslate(zh)} />)
@@ -86,6 +89,13 @@ describe('research session store', () => {
     expect(view.container.querySelector('[data-research-main-node="node-1"]')).toBeTruthy()
     expect(view.container.querySelector('[data-research-main-node="node-2"]')).toBeTruthy()
     expect(view.container.querySelector('[data-research-main-node="node-3"]')).toBeNull()
+
+    const firstNode = view.container.querySelector('[data-research-main-node="node-1"]')
+    expect(firstNode?.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(firstNode as HTMLElement)
+    expect(firstNode?.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(firstNode as HTMLElement)
+    expect(firstNode?.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('keeps every completed stage visible after the final plan is selected', async () => {
