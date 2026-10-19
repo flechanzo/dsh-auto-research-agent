@@ -30,6 +30,7 @@ Updated: 2026-10-19
 - The main conversation transcript now keeps stage cards static on hover and lets the user click or press Enter/Space to expand or collapse the current stage content.
 - Stage cards now keep the conversation background unchanged while the pointer rests over them. Their `data-expanded` state directly controls collapsed or full artifact content, so a click, Enter, or Space visibly expands the selected stage even when the artifact is short.
 - The main conversation's stage content area now toggles directly: the collapsed card keeps its 360px scroll view, and clicking the artifact content expands it to its full height; clicking again restores the scroll view.
+- Literature-index requests now bound URL-encoded queries so long multi-question problem summaries are accepted by the HTTP fetch provider, use the direct arXiv export endpoint to avoid its cross-origin redirect, reject non-2xx and empty responses, and report the selected source and status when every index fails instead of silently showing an empty result.
 
 ## Current milestone
 

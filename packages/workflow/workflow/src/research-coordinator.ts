@@ -719,7 +719,16 @@ export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number)
         ? ['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'] as const
         : options.sources
       const limit = options?.maxResults ?? maxResults
-      const collected = (await Promise.all(sources.map(source => searchLiteratureSource(web, source, query, signal, limit)))).flat()
+      const outcomes = await Promise.all(sources.map(source => searchLiteratureSource(web, source, query, signal, limit)))
+      const failures = outcomes.filter((outcome): outcome is LiteratureSourceFailure => 'error' in outcome)
+      const collected = outcomes.flatMap(outcome => outcome.sources)
+      // A failed index used to look exactly like an index with no matching papers.
+      // Keep partial results usable, but surface a useful error when every selected
+      // backend failed so the caller can distinguish network/provider failure from
+      // a valid empty search.
+      if (collected.length === 0 && failures.length === outcomes.length && failures.length > 0) {
+        throw new Error(`literature search failed for all selected sources: ${failures.map(failure => `${failure.source} (${failure.error})`).join('; ')}`)
+      }
       const seen = new Set<string>()
       return collected.filter((source) => {
         if (seen.has(source.url)) return false
@@ -730,32 +739,82 @@ export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number)
   }
 }
 
-/** Search one explicit paper index without making an unavailable index abort the workflow. */
+interface LiteratureSourceSuccess {
+  readonly sources: readonly ResearchLiteratureSource[]
+}
+
+interface LiteratureSourceFailure {
+  readonly source: ResearchLiteratureSourceId
+  readonly sources: readonly []
+  readonly error: string
+}
+
+/** Search one explicit paper index while retaining diagnostics for unavailable indexes. */
 async function searchLiteratureSource(
   web: WebRuntime,
   source: ResearchLiteratureSourceId,
   query: string,
   signal: AbortSignal | undefined,
   maxResults: number,
-): Promise<readonly ResearchLiteratureSource[]> {
+): Promise<LiteratureSourceSuccess | LiteratureSourceFailure> {
   try {
+    let sources: readonly ResearchLiteratureSource[]
     switch (source) {
-      case 'arxiv': return await searchArxiv(web, query, signal, maxResults)
-      case 'openreview': return await searchOpenReview(web, query, signal, maxResults)
-      case 'semantic-scholar': return await searchSemanticScholar(web, query, signal, maxResults)
-      case 'acl-anthology': return await searchAclAnthology(web, query, signal, maxResults)
-      case 'openalex': return await searchOpenAlex(web, query, signal, maxResults)
+      case 'arxiv': sources = await searchArxiv(web, query, signal, maxResults); break
+      case 'openreview': sources = await searchOpenReview(web, query, signal, maxResults); break
+      case 'semantic-scholar': sources = await searchSemanticScholar(web, query, signal, maxResults); break
+      case 'acl-anthology': sources = await searchAclAnthology(web, query, signal, maxResults); break
+      case 'openalex': sources = await searchOpenAlex(web, query, signal, maxResults); break
       default: return unreachableLiteratureSource(source)
     }
-  } catch {
+    return { sources }
+  } catch (error: unknown) {
     signal?.throwIfAborted()
-    return []
+    return { source, sources: [], error: describeLiteratureError(error) }
   }
 }
 
 async function fetchText(web: WebRuntime, url: string, signal?: AbortSignal): Promise<string> {
   const result = await web.fetch({ url }, signal)
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw new Error(`HTTP ${result.statusCode}`)
+  }
+  if (result.body.content.trim().length === 0) {
+    throw new Error('empty response body')
+  }
   return result.body.content
+}
+
+function describeLiteratureError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.replace(/\s+/gu, ' ').trim().slice(0, 240) || 'unknown error'
+}
+
+/** Keep explicit index requests below the HTTP fetch provider's URL limit. */
+const MAX_ENCODED_LITERATURE_QUERY_LENGTH = 1200
+
+function encodeLiteratureQuery(query: string): string {
+  const normalized = query
+    .replace(/https?:\/\/\S+/gu, ' ')
+    .replace(/[\[\]()`*_#]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+  const characters = Array.from(normalized)
+  let low = 0
+  let high = characters.length
+  let best = ''
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const candidate = characters.slice(0, middle).join('')
+    const encoded = encodeURIComponent(candidate)
+    if (encoded.length <= MAX_ENCODED_LITERATURE_QUERY_LENGTH) {
+      best = encoded
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return best
 }
 
 async function searchOpenReview(
@@ -764,7 +823,8 @@ async function searchOpenReview(
   signal: AbortSignal | undefined,
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
-  const url = `https://api2.openreview.net/notes?limit=${Math.max(1, Math.min(maxResults, 50))}&sort=tcdate:desc&content=${encodeURIComponent(query)}`
+  const suffix = `&limit=${Math.max(1, Math.min(maxResults, 50))}&sort=tcdate:desc`
+  const url = `https://api2.openreview.net/notes?content=${encodeLiteratureQuery(query)}${suffix}`
   const value = JSON.parse(await fetchText(web, url, signal)) as { readonly notes?: readonly OpenReviewNote[] }
   return (value.notes ?? []).map((note) => {
     const id = note.id ?? note.forum
@@ -797,7 +857,8 @@ async function searchSemanticScholar(
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
   const fields = 'title,abstract,url,publicationDate,venue'
-  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.max(1, Math.min(maxResults, 100))}&fields=${fields}`
+  const suffix = `&limit=${Math.max(1, Math.min(maxResults, 100))}&fields=${fields}`
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeLiteratureQuery(query)}${suffix}`
   const value = JSON.parse(await fetchText(web, url, signal)) as { readonly data?: readonly SemanticScholarPaper[] }
   const results: ResearchLiteratureSource[] = []
   for (const paper of value.data ?? []) {
@@ -827,7 +888,7 @@ async function searchAclAnthology(
   signal: AbortSignal | undefined,
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
-  const url = `https://aclanthology.org/search/?q=${encodeURIComponent(query)}`
+  const url = `https://aclanthology.org/search/?q=${encodeLiteratureQuery(query)}`
   const html = await fetchText(web, url, signal)
   const results: ResearchLiteratureSource[] = []
   const pattern = /<a[^>]+href=["'](\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
@@ -858,7 +919,8 @@ async function searchOpenAlex(
   signal: AbortSignal | undefined,
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
-  const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=${Math.max(1, Math.min(maxResults, 100))}`
+  const suffix = `&per-page=${Math.max(1, Math.min(maxResults, 100))}`
+  const url = `https://api.openalex.org/works?search=${encodeLiteratureQuery(query)}${suffix}`
     + '&select=id,doi,title,publication_date,abstract_inverted_index'
   const value = JSON.parse(await fetchText(web, url, signal)) as { readonly results?: readonly OpenAlexWork[] }
   return (value.results ?? []).map((work) => {
@@ -895,18 +957,11 @@ async function searchArxiv(
   maxResults: number,
 ): Promise<readonly ResearchLiteratureSource[]> {
   const searchQuery = `all:${query} AND (cat:cs.LG OR cat:cs.AI OR cat:cs.CL OR cat:stat.ML)`
-  const url = `https://arxiv.org/api/query?search_query=${encodeURIComponent(searchQuery)}&start=0&max_results=${Math.max(1, Math.min(maxResults, 50))}&sortBy=submittedDate&sortOrder=descending`
-  let result: Awaited<ReturnType<WebRuntime['fetch']>>
-  try {
-    result = await web.fetch({ url }, signal)
-  } catch {
-    // arXiv is an optional literature backend. Its API can be blocked by a
-    // deployment's public-network policy (or be temporarily unavailable),
-    // and that must not discard results already returned by the main search.
-    signal?.throwIfAborted()
-    return []
-  }
-  const xml = result.body.content
+  const suffix = `&start=0&max_results=${Math.max(1, Math.min(maxResults, 50))}&sortBy=submittedDate&sortOrder=descending`
+  // export.arxiv.org avoids the cross-origin redirect from arxiv.org that the
+  // hardened HTTP provider intentionally refuses to follow.
+  const url = `https://export.arxiv.org/api/query?search_query=${encodeLiteratureQuery(searchQuery)}${suffix}`
+  const xml = await fetchText(web, url, signal)
   const parsed: ResearchLiteratureSource[] = []
   for (const match of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
     const entry = match[1] ?? ''

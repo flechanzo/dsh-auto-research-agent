@@ -422,6 +422,44 @@ describe('createWebLiteratureSearcher', () => {
     ])
   })
 
+  it('reports the selected indexes when every fetch fails', async () => {
+    const web = Object.setPrototypeOf({
+      async fetch(request: { readonly url: string }) {
+        return {
+          url: request.url,
+          statusCode: 503,
+          truncated: false,
+          body: { kind: 'text' as const, content: '{"error":"temporarily unavailable"}' },
+        }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, {
+      sources: ['arxiv', 'openalex'],
+    })).rejects.toThrow('literature search failed for all selected sources: arxiv (HTTP 503); openalex (HTTP 503)')
+  })
+
+  it('bounds encoded queries so long problem summaries reach the indexes', async () => {
+    const fetchedUrls: string[] = []
+    const web = Object.setPrototypeOf({
+      async fetch(request: { readonly url: string }) {
+        fetchedUrls.push(request.url)
+        return {
+          url: request.url,
+          statusCode: 200,
+          truncated: false,
+          body: { kind: 'text' as const, content: '{"results":[]}' },
+        }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await createWebLiteratureSearcher(web, 4).search('机器学习 '.repeat(2000), undefined, {
+      sources: ['openalex'],
+    })
+    expect(fetchedUrls).toHaveLength(1)
+    expect(fetchedUrls[0]?.length).toBeLessThanOrEqual(2048)
+  })
+
   it('parses explicit conference and citation indexes without native search', async () => {
     const web = Object.setPrototypeOf({
       async fetch(request: { readonly url: string }) {

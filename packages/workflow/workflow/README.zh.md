@@ -60,7 +60,7 @@ return { reviewed: reviews.length }
 
 ### 人工确认式科研运行
 
-`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取一个或多个持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 Web fetch 查询明确的 arXiv、OpenReview、Semantic Scholar、ACL Anthology 和 OpenAlex 索引，应用用户选择的研究方向侧重，运行当前 Session 模型路由下的命名 subagent 角色，并为每个生成的想法再次检索索引以和已发表工作比较。隔离的创新性 reviewer 会同时收到上传论文摘要、分支中的全部文献检查点和候选点专项检索结果；专项证据缺失、与已有论文高度重合或分数过低的候选都会被丢弃并重试。协调器先返回等待确认的最终 Markdown 预览，确认后才通过 `ctx.fs` 写入文件，并把仿真保留为显式可选适配器。科研 Session 不会暴露 DeepSeek 原生 `web_search` 工具。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
+`ResearchCoordinator.advance()` 接受一个不可变 `ResearchState`，返回一个新状态及刚刚对用户可见的 artifact。它不会推进仍处于 `awaiting-confirmation` 的节点。标准 Host 组装会读取一个或多个持久化 `FileAttachmentRef`，对 PDF 按配置的页数、缩放和像素上限提取文本或渲染 OCR 页面，通过 Web fetch 查询明确的 arXiv、OpenReview、Semantic Scholar、ACL Anthology 和 OpenAlex 索引；查询会限制 URL 编码后的长度以适配 HTTP 提供方，并校验 HTTP 状态和正文，所有索引都不可用时会报告具体来源和状态而不是伪装成空结果。它应用用户选择的研究方向侧重，运行当前 Session 模型路由下的命名 subagent 角色，并为每个生成的想法再次检索索引以和已发表工作比较。隔离的创新性 reviewer 会同时收到上传论文摘要、分支中的全部文献检查点和候选点专项检索结果；专项证据缺失、与已有论文高度重合或分数过低的候选都会被丢弃并重试。协调器先返回等待确认的最终 Markdown 预览，确认后才通过 `ctx.fs` 写入文件，并把仿真保留为显式可选适配器。科研 Session 不会暴露 DeepSeek 原生 `web_search` 工具。拒绝想法会创建新分支，新分支保留问题和文献证据，同时不修改被拒绝分支。
 
 -----
 
