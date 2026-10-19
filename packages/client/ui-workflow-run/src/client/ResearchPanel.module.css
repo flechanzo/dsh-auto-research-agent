@@ -635,8 +635,8 @@
 }
 
 .mainTranscriptMessage[data-expanded='false'] .mainTranscriptContent {
-  max-height: 120px;
-  overflow: hidden;
+  max-height: 360px;
+  overflow: auto;
 }
 
 .mainTranscriptMessage[data-expanded='true'] .mainTranscriptContent {
@@ -662,6 +662,7 @@
   max-height: 360px;
   overflow: auto;
   margin: 0;
+  cursor: pointer;
   white-space: pre-wrap;
   color: var(--dsw-alias-label-secondary);
   font: inherit;

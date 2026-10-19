@@ -29,6 +29,7 @@ Updated: 2026-10-19
 - The automatic research panel now has a visual hierarchy with a status header, branch and timeline cards, a highlighted current artifact card, grouped upload and decision controls, semantic status pills, stronger focus states, and a narrow-window layout. The same treatment is applied to the header and message-tail branch actions.
 - The main conversation transcript now keeps stage cards static on hover and lets the user click or press Enter/Space to expand or collapse the current stage content.
 - Stage cards now keep the conversation background unchanged while the pointer rests over them. Their `data-expanded` state directly controls collapsed or full artifact content, so a click, Enter, or Space visibly expands the selected stage even when the artifact is short.
+- The main conversation's stage content area now toggles directly: the collapsed card keeps its 360px scroll view, and clicking the artifact content expands it to its full height; clicking again restores the scroll view.
 
 ## Current milestone
 

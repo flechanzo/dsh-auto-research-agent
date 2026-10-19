@@ -168,7 +168,15 @@ export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTrans
                 : artifacts.map(artifact => (
                   <div key={artifact.artifactId} className={css.mainTranscriptArtifact}>
                     <div className={css.mainTranscriptArtifactTitle}>{artifact.title}</div>
-                    <pre className={css.mainTranscriptContent}>{artifact.content}</pre>
+                    <pre
+                      className={css.mainTranscriptContent}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        toggleNode(node.nodeId)
+                      }}
+                    >
+                      {artifact.content}
+                    </pre>
                   </div>
                 ))}
             </article>
