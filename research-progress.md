@@ -32,6 +32,7 @@ Updated: 2026-10-19
 - The main conversation's stage content area now toggles directly: the collapsed card keeps its 360px scroll view, and clicking the artifact content expands it to its full height; clicking again restores the scroll view.
 - Literature-index requests now bound URL-encoded queries so long multi-question problem summaries are accepted by the HTTP fetch provider, use the direct arXiv export endpoint to avoid its cross-origin redirect, reject non-2xx and empty responses, and report the selected source and status when every index fails instead of silently showing an empty result.
 - The automatic-research right Sidebar now owns an independent vertical scroll container, so short windows can reach confirmation, feedback, and branch controls without clipping the panel.
+- The research tab now lets the DockKit pane body own vertical scrolling: its tab wrapper and workflow root grow to their natural content height, so the right sidebar scrollbar reaches the confirmation button even in short windows. The tab kind is exposed on the wrapper and covered by focused layout and seat tests.
 
 ## Current milestone
 

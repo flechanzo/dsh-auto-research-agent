@@ -616,6 +616,7 @@ describe('slot-owned useTabInfo', () => {
     const a = h.open('a.txt')
     const b = h.open('b.txt')
     const bodyB = element(h.view.container, '[data-tab-body]')
+    expect(element(h.view.container, '[data-sidebar-right-tab-kind="text"]')).toBeTruthy()
     expect(h.titles.get(a.id)?.tab.visible).toBe(true)
     act(() => { h.actions.focusTab(SESSION, a.id) })
     const bodyA = element(h.view.container, '[data-tab-body]')
