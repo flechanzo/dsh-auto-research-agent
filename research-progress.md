@@ -1,6 +1,6 @@
 # Auto Research Agent Progress
 
-Updated: 2026-10-17
+Updated: 2026-10-19
 
 ## Completed
 
@@ -26,14 +26,15 @@ Updated: 2026-10-17
 - Problem extraction now preserves every distinct testable question and gap in numbered form, so literature search and idea generation receive the full problem set instead of only the first question.
 - Host and Client project references, generated Typert Remote artifacts, Web bundle rows, and the API Remote aggregation are wired and typechecked.
 - The new-session preset control is now visibly labeled `Agent`, and the Web bundle includes a selectable `Auto research agent` preset with the research workflow prompt and existing research tools.
+- The automatic research panel now has a visual hierarchy with a status header, branch and timeline cards, a highlighted current artifact card, grouped upload and decision controls, semantic status pills, stronger focus states, and a narrow-window layout. The same treatment is applied to the header and message-tail branch actions.
 
 ## Current milestone
 
-- The approved same-panel task and branch navigation update is implemented. Completed answers remain visible in the main Chat view, the Sidebar receives the active Session identity, the Conversation/Trajectory strip selects branches in the same Session, and the per-Session project directory is written through the injected filesystem with its resolved sandbox policy. Final browser interaction verification remains.
+- The approved same-panel task and branch navigation update is implemented. Completed answers remain visible in the main Chat view, the Sidebar receives the active Session identity, the Conversation/Trajectory strip selects branches in the same Session, and the per-Session project directory is written through the injected filesystem with its resolved sandbox policy. The visual refresh is complete; interactive browser verification remains blocked by the local Windows launcher/automation environment.
 - The installed build exposes the workflow from the Session header's `自动科研流程` action and the right Sidebar.
 - On a new session, choose `Agent: 自动科研智能体` from the preset dropdown before sending the first message.
 - The Web profile loads `research-controller` successfully; paper upload, confirmation, feedback, branch, history, and plan commands are wired through the Session-scoped Remote.
-- Verification: the focused workflow UI suite passes (39 tests), the shared research-session-store suite passes (2 tests), the coordinator suite passes (16 tests), affected Host/Client TypeScript projects compile, and the repository Host/client build completes. Documentation gates and a browser smoke run remain the next publication checks for this checkpoint.
+- Verification: the focused research UI suite passes (8 tests), the shared research-session-store suite passes (2 tests), contract lint, affected Host/Client TypeScript projects, and the repository Host/client build complete. The local Web server is reachable on port 3080 but browser automation could not attach; `dev:web` also reports the existing Node ESM loader error after building.
 - The aggregate hygiene run still reports the Windows NodeNext temporary-symlink privilege limitation and the pre-existing `apps/cli/tests/profiles/acp/cordis.yml` Loader-shape failure; neither is introduced by this milestone.
 
 ## Next work after confirmation

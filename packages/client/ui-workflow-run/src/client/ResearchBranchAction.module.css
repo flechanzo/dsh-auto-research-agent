@@ -1,8 +1,8 @@
 .action {
   align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   display: inline-flex;
@@ -11,12 +11,19 @@
   width: calc(28px + var(--dsh-content-font-delta, 0px));
   height: calc(28px + var(--dsh-content-font-delta, 0px));
   padding: 6px;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
 }
 
 .action:hover,
 .action:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
   color: var(--dsw-alias-label-primary);
+}
+
+.action:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
 }
 
 .action svg {
@@ -30,6 +37,6 @@
 }
 
 .action[data-unavailable='true']:hover {
-  background: transparent;
+  background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-secondary);
 }

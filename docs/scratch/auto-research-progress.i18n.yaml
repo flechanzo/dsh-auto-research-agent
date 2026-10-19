@@ -3,17 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/scratch/auto-research-progress.md
 /auto-research-workflow-progress:
-  en: ab794ab11f177840
-  zh: 2bec81f58a41448f
+  en: dbcdd9e722fdfe39
+  zh: c09dfab8015721b7
 /auto-research-workflow-progress/current-status:
-  en: 3a89d750a381bb4d
-  zh: 03339e9df6478562
+  en: f85b9e990f3bdda5
+  zh: 23c4d7dc8cd8f5fd
 /auto-research-workflow-progress/verification-evidence:
-  en: c9cf712bc8ad0f0b
-  zh: e5565320c895f84c
+  en: 293aadb3ed938899
+  zh: 43ac86b9d8544dff
 /auto-research-workflow-progress/current-checkpoint:
-  en: bc081f51c8fcd913
-  zh: 0205cd4c4b8ed2f3
+  en: e90d96b48ccca0cd
+  zh: 852278b9c03fb8c2
 /auto-research-workflow-progress/dev-note:
   en: ff69e6db58a82713
   zh: 0afb3042a4a12995

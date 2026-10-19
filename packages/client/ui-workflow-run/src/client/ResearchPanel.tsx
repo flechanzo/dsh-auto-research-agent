@@ -307,14 +307,28 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       data-research-active-branch={displayState.activeBranchId}
       aria-busy={loading || busy}
     >
-      <div className={css.header}>
-        <span className={css.title}>{t('research.title')}</span>
-        <span className={css.subtle}>{stageText(selected.stage, t)} · {statusText(selected.status, t)}</span>
-        <span className={css.subtle}>{t('research.workspace', { path: `research-projects/${String(workflowSessionId)}` })}</span>
-      </div>
+      <header className={css.header}>
+        <div className={css.headerIdentity}>
+          <span className={css.headerIcon} aria-hidden="true"><IconBranchOutlineRegular size={16} /></span>
+          <div className={css.headerCopy}>
+            <span className={css.title}>{t('research.title')}</span>
+            <span className={css.headerStage}>{stageText(selected.stage, t)}</span>
+          </div>
+        </div>
+        <div className={css.headerMeta}>
+          <span className={css.statusPill} data-status={selected.status}>{statusText(selected.status, t)}</span>
+          <span className={css.workspace}>{t('research.workspace', { path: `research-projects/${String(workflowSessionId)}` })}</span>
+        </div>
+      </header>
 
-      <div>
-        <div className={css.subtle}>{t('research.branch')}</div>
+      <section className={css.section}>
+        <div className={css.sectionHeader}>
+          <div>
+            <div className={css.sectionTitle}>{t('research.branch')}</div>
+            <div className={css.sectionHint}>{t('research.history')}</div>
+          </div>
+          <span className={css.sectionBadge}>{allBranches.length}</span>
+        </div>
         <div className={css.branchTree} aria-label={t('research.branch')}>
           {allBranches.map(item => (
             <div key={item.branchId} className={css.branchTreeBranch} data-research-branch={item.branchId}>
@@ -356,10 +370,13 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div>
-        <div className={css.subtle}>{t('research.history')}</div>
+      <section className={css.section}>
+        <div className={css.sectionHeader}>
+          <div className={css.sectionTitle}>{t('research.history')}</div>
+          <span className={css.sectionHint}>{stageText(selected.stage, t)}</span>
+        </div>
         <div className={css.timeline} aria-label={t('research.history')}>
           {branchNodes.map(node => (
             <button
@@ -375,10 +392,16 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className={css.card} data-research-node-content={selected.nodeId}>
-        <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
+      <section className={css.card} data-research-node-content={selected.nodeId}>
+        <div className={css.cardHeader}>
+          <div className={css.cardIdentity}>
+            <div className={css.cardKicker}>{stageText(selected.stage, t)}</div>
+            <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
+          </div>
+          <span className={css.statusPill} data-status={selected.status}>{statusText(selected.status, t)}</span>
+        </div>
         <pre className={css.content}>{artifact?.content || t('research.emptyArtifact')}</pre>
         {artifact?.evaluation !== undefined && (
           <div className={artifact.evaluation.overlap || artifact.evaluation.score < artifact.evaluation.threshold
@@ -453,20 +476,27 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         )}
         {(selected.stage === 'paper-upload' || selected.stage === 'literature-search' || selected.stage === 'targeted-literature-search') && (
           <>
-            <input ref={inputRef} className={css.fileInput} type="file" multiple accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />
-            <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={() => inputRef.current?.click()}>
-              {selected.stage === 'paper-upload' ? t('research.upload') : t('research.uploadSupplemental')}
-            </button>
-            <span className={css.subtle}>{selected.stage === 'paper-upload' ? t('research.uploadHint') : t('research.uploadSupplementalHint')}</span>
+            <div className={css.uploadPanel}>
+              <div className={css.uploadCopy}>
+                <span className={css.uploadTitle}>{selected.stage === 'paper-upload' ? t('research.upload') : t('research.uploadSupplemental')}</span>
+                <span className={css.subtle}>{selected.stage === 'paper-upload' ? t('research.uploadHint') : t('research.uploadSupplementalHint')}</span>
+              </div>
+              <input ref={inputRef} className={css.fileInput} type="file" multiple accept=".pdf,.txt,application/pdf,text/plain" onChange={upload} />
+              <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={() => inputRef.current?.click()}>
+                {selected.stage === 'paper-upload' ? t('research.upload') : t('research.uploadSupplemental')}
+              </button>
+            </div>
           </>
         )}
         {canMutate && ((selected.status === 'awaiting-confirmation' || selected.status === 'confirmed')
           || (selected.status === 'active' && selected.stage !== 'paper-upload')) && (
-          <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={confirm}>
-            <IconCheckOutlineRegular size={14} /> {selected.stage === 'final-plan' && artifact?.kind === 'plan' && artifact.source === undefined
-              ? t('research.writePlan')
-              : t('research.confirm')}
-          </button>
+          <div className={css.actionRow}>
+            <button type="button" className={css.primaryButton} disabled={busy || loading} onClick={confirm}>
+              <IconCheckOutlineRegular size={14} /> {selected.stage === 'final-plan' && artifact?.kind === 'plan' && artifact.source === undefined
+                ? t('research.writePlan')
+                : t('research.confirm')}
+            </button>
+          </div>
         )}
         {canMutate && ideaNeedsReview && (
           <>
@@ -503,7 +533,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             <button type="button" disabled={busy || loading} className={css.button} onClick={() => { continueFromNode(selected.nodeId) }}>{t('research.continue')}</button>
           </div>
         )}
-      </div>
+      </section>
       {stageArtifacts.length > 0 && (
         <section className={css.transcript} aria-label={t('research.stageContents')}>
           <div className={css.subtle}>{t('research.stageContents')}</div>
