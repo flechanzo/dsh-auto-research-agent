@@ -160,6 +160,9 @@
 }
 
 .tabHost {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   pointer-events: auto;
@@ -787,6 +790,7 @@
 
 /* Unpadded like `.paneBody`: the same body draws the same insets in a float. */
 .floatBody {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;  /* This sheet draws elevated surfaces (the strip and the menu), so a scroller

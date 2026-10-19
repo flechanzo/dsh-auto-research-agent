@@ -34,6 +34,8 @@ Updated: 2026-10-19
 - The automatic-research right Sidebar now owns an independent vertical scroll container, so short windows can reach confirmation, feedback, and branch controls without clipping the panel.
 - The research tab now lets the DockKit pane body own vertical scrolling: its tab wrapper and workflow root grow to their natural content height, so the right sidebar scrollbar reaches the confirmation button even in short windows. The tab kind is exposed on the wrapper and covered by focused layout and seat tests.
 - The first scroll fix still left DockKit's pane body without a definite flex track. The pane body now lays out its tab body as a vertical flex child, and the research tab body is the single bounded vertical scroller; the workflow content itself stays natural-height so the bottom confirmation action is reachable.
+- The flex track alone was still insufficient in the shipped layout. The research tab body is now an absolute layer filling DockKit's positioned pane body, with its own vertical scrollbar; floating panes receive the same containing block. This removes percentage-height resolution from the scroll path.
+- The DockKit tab host now is an explicit vertical flex container. Its header consumes fixed space and the pane body receives the remaining bounded height, so the research tab's absolute scrolling layer can scroll the complete workflow instead of collapsing to an unbounded or zero-height track.
 
 ## Current milestone
 

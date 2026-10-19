@@ -173,7 +173,9 @@
    fixed-height tab body clips that natural height before the pane can measure
    it, which makes the bottom controls unreachable in short windows. */
 .tabBody[data-sidebar-right-tab-kind='research-workflow'] {
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
+  display: block;
   height: auto;
   min-height: 0;
   overflow-x: hidden;

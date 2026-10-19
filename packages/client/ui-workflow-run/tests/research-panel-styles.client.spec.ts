@@ -43,7 +43,9 @@ describe('ResearchPanel Sidebar layout', () => {
 
   it('makes only the research tab body content-sized so confirmation stays reachable', () => {
     expect(declarations(sidebarDeclarationText, ".tabBody[data-sidebar-right-tab-kind='research-workflow']")).toEqual(expect.arrayContaining([
-      'flex: 1 1 auto',
+      'position: absolute',
+      'inset: 0',
+      'display: block',
       'height: auto',
       'min-height: 0',
       'overflow-x: hidden',
@@ -53,9 +55,20 @@ describe('ResearchPanel Sidebar layout', () => {
   })
 
   it('gives tab bodies a definite vertical flex track inside DockKit', () => {
+    expect(declarations(dockkitDeclarationText, '.tabHost')).toEqual(expect.arrayContaining([
+      'display: flex',
+      'flex: 1 1 auto',
+      'flex-direction: column',
+      'min-height: 0',
+    ]))
     expect(declarations(dockkitDeclarationText, '.paneBody')).toEqual(expect.arrayContaining([
       'display: flex',
       'flex-direction: column',
+      'min-height: 0',
+      'overflow: auto',
+    ]))
+    expect(declarations(dockkitDeclarationText, '.floatBody')).toEqual(expect.arrayContaining([
+      'position: relative',
       'min-height: 0',
       'overflow: auto',
     ]))
