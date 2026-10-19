@@ -92,10 +92,13 @@ describe('research session store', () => {
 
     const firstNode = view.container.querySelector('[data-research-main-node="node-1"]')
     expect(firstNode?.getAttribute('aria-expanded')).toBe('false')
+    expect(firstNode?.getAttribute('data-expanded')).toBe('false')
     fireEvent.click(firstNode as HTMLElement)
     expect(firstNode?.getAttribute('aria-expanded')).toBe('true')
+    expect(firstNode?.getAttribute('data-expanded')).toBe('true')
     fireEvent.click(firstNode as HTMLElement)
     expect(firstNode?.getAttribute('aria-expanded')).toBe('false')
+    expect(firstNode?.getAttribute('data-expanded')).toBe('false')
   })
 
   it('keeps every completed stage visible after the final plan is selected', async () => {

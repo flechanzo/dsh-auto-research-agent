@@ -624,12 +624,6 @@
   cursor: pointer;
 }
 
-.mainTranscriptMessage:hover,
-.mainTranscriptMessage:focus-visible {
-  border-color: var(--dsw-alias-state-business-primary);
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
 .mainTranscriptMessage:focus-visible {
   outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
@@ -640,14 +634,14 @@
   box-shadow: inset 3px 0 0 var(--dsw-alias-state-business-primary);
 }
 
-.mainTranscriptMessage:not(.mainTranscriptMessageExpanded) .mainTranscriptContent {
+.mainTranscriptMessage[data-expanded='false'] .mainTranscriptContent {
   max-height: 120px;
   overflow: hidden;
 }
 
-.mainTranscriptMessageExpanded .mainTranscriptContent {
-  max-height: 360px;
-  overflow: auto;
+.mainTranscriptMessage[data-expanded='true'] .mainTranscriptContent {
+  max-height: none;
+  overflow: visible;
 }
 
 .mainTranscriptArtifact {

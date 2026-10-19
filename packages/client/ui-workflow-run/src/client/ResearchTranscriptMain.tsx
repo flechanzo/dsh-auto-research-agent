@@ -143,6 +143,7 @@ export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTrans
                 expanded ? css.mainTranscriptMessageExpanded : undefined,
               ].filter(Boolean).join(' ')}
               data-research-main-node={node.nodeId}
+              data-expanded={expanded ? 'true' : 'false'}
               role="button"
               tabIndex={0}
               aria-current={selected ? 'step' : undefined}
