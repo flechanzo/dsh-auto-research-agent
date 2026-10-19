@@ -5,7 +5,7 @@
   gap: 16px;
   width: 100%;
   min-width: 0;
-  min-height: 100%;
+  min-height: auto;
   height: auto;
   max-height: none;
   box-sizing: border-box;

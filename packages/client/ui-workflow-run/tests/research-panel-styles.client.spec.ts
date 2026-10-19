@@ -11,8 +11,13 @@ const sidebarCss = readFileSync(
   fileURLToPath(new URL('../../ui-sidebar-right/src/client/shell/SidebarRight.module.css', import.meta.url)),
   'utf8',
 )
+const dockkitCss = readFileSync(
+  fileURLToPath(new URL('../../ui-dockkit/src/components/dockkit.module.css', import.meta.url)),
+  'utf8',
+)
 const declarationText = css.replace(/\/\*[\s\S]*?\*\//g, ' ')
 const sidebarDeclarationText = sidebarCss.replace(/\/\*[\s\S]*?\*\//g, ' ')
+const dockkitDeclarationText = dockkitCss.replace(/\/\*[\s\S]*?\*\//g, ' ')
 
 function declarations(source: string, selector: string): string[] {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -29,7 +34,7 @@ describe('ResearchPanel Sidebar layout', () => {
   it('lets the DockKit pane body measure the full workflow before scrolling', () => {
     expect(rootDeclarations()).toEqual(expect.arrayContaining([
       'flex: 0 0 auto',
-      'min-height: 100%',
+      'min-height: auto',
       'height: auto',
       'max-height: none',
       'overflow: visible',
@@ -38,9 +43,21 @@ describe('ResearchPanel Sidebar layout', () => {
 
   it('makes only the research tab body content-sized so confirmation stays reachable', () => {
     expect(declarations(sidebarDeclarationText, ".tabBody[data-sidebar-right-tab-kind='research-workflow']")).toEqual(expect.arrayContaining([
+      'flex: 1 1 auto',
       'height: auto',
-      'min-height: 100%',
-      'overflow: visible',
+      'min-height: 0',
+      'overflow-x: hidden',
+      'overflow-y: auto',
+      'overscroll-behavior: contain',
+    ]))
+  })
+
+  it('gives tab bodies a definite vertical flex track inside DockKit', () => {
+    expect(declarations(dockkitDeclarationText, '.paneBody')).toEqual(expect.arrayContaining([
+      'display: flex',
+      'flex-direction: column',
+      'min-height: 0',
+      'overflow: auto',
     ]))
   })
 })
