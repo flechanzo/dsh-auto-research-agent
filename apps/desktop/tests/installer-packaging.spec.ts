@@ -77,6 +77,23 @@ describe('installer preparation preserves application dependencies', () => {
     expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
   })
 
+  it('keeps the official feed in an explicitly production-configured unsigned package', async () => {
+    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: 'com.example.installer',
+      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://download.deepseek.com',
+      DSH_DESKTOP_TARGET_PLATFORM: 'win32',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+      DSH_DESKTOP_UNSIGNED: '1',
+    }, 'win32', 'x64')
+    expect(config.publish).toEqual([{
+      provider: 'generic',
+      url: 'https://download.deepseek.com/dsh-desk/feeds/win-x64/',
+      channel: 'nightly',
+    }])
+  })
+
   it('packages every preload entry point the shell loads', async () => {
     const { readdirSync, readFileSync } = await import('node:fs')
     const sourceDirectory = new URL('../src/', import.meta.url)

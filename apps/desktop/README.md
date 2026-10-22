@@ -289,7 +289,7 @@ On Windows x64, use the complete unsigned packaging command for local installati
 pnpm run package:desktop:win:x64:unsigned
 ```
 
-The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, omits automatic-update configuration, strips signing credentials, and creates no release completion record. It does not require EV credentials or an update origin. The signed packaging and upload commands retain their release requirements.
+The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, strips signing credentials, and creates no release completion record. With the default `test` or an omitted deployment it omits update metadata; when the ignored `.env.windows` explicitly selects `DSH_DESKTOP_AUTO_UPDATE_ENV=production`, it embeds the official `https://download.deepseek.com` feed so the packaged folder can check for signed releases. The runtime copied into that package includes the current `@deepseek-ai/dsh-web-app` research preset and its controller, so a Desktop update keeps the automatic research agent aligned with the shell. The signed packaging and upload commands retain their release requirements.
 
 ### Windows installer interface
 

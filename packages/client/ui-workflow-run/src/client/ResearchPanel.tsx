@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { IconBranchOutlineRegular, IconCheckOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconBranchOutlineRegular,
+  IconCheckOutlineRegular,
+  IconFlatListOutlineRegular,
+  IconPlayOutlineRegular,
+  IconWorkspaceTreeOutlineRegular,
+  Tooltip,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ResearchArtifact,
+  ResearchBranch,
   ResearchCommandValue,
   ResearchDirectionWeights,
   ResearchDirectionFocusId,
@@ -131,6 +139,10 @@ function selectedBranchNodes(state: ResearchState, node: ResearchNode): readonly
   return result
 }
 
+function branchLabel(branch: ResearchBranch | undefined, branchId: string): string {
+  return branch?.label ?? branchId
+}
+
 function innovationClaimPasses(artifact: ResearchArtifact | undefined): boolean {
   if (artifact === undefined || artifact.kind !== 'idea') return false
   const text = artifact.content.toLowerCase()
@@ -153,6 +165,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [feedback, setFeedback] = useState('')
+  const [branchView, setBranchView] = useState<'list' | 'map'>('map')
   const [choice, setChoice] = useState<'simulation' | 'plan'>('plan')
   const [directionWeights, setDirectionWeights] = useState<ResearchDirectionWeights>(DEFAULT_DIRECTION_WEIGHTS)
   const [literatureSources, setLiteratureSources] = useState<readonly ResearchLiteratureSourceId[]>(['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'])
@@ -175,6 +188,20 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     )),
     [displayState.branches],
   )
+  const rootBranches = useMemo(
+    () => allBranches.filter(item => item.forkNodeId === undefined),
+    [allBranches],
+  )
+  const branchTreeForks = useMemo(() => {
+    const children = new Map<string, ResearchBranch[]>()
+    for (const branch of allBranches) {
+      if (branch.forkNodeId === undefined) continue
+      const siblings = children.get(branch.forkNodeId) ?? []
+      siblings.push(branch)
+      children.set(branch.forkNodeId, siblings)
+    }
+    return children
+  }, [allBranches])
   const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
   const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== workflowSessionId
   const canMutate = !isHistorical && !sessionMismatch
@@ -305,6 +332,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
       data-tab-id={tab.id}
       data-research-selected-node={selected.nodeId}
       data-research-active-branch={displayState.activeBranchId}
+      data-research-branch-view={branchView}
       aria-busy={loading || busy}
     >
       <header className={css.header}>
@@ -321,55 +349,195 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         </div>
       </header>
 
-      <section className={css.section}>
+      <section className={branchView === 'list' ? `${css.section} ${css.branchTreeSection}` : css.section}>
         <div className={css.sectionHeader}>
           <div>
             <div className={css.sectionTitle}>{t('research.branch')}</div>
             <div className={css.sectionHint}>{t('research.history')}</div>
           </div>
-          <span className={css.sectionBadge}>{allBranches.length}</span>
-        </div>
-        <div className={css.branchTree} aria-label={t('research.branch')}>
-          {allBranches.map(item => (
-            <div key={item.branchId} className={css.branchTreeBranch} data-research-branch={item.branchId}>
-              <button
-                type="button"
-                className={item.branchId === displayState.activeBranchId ? `${css.branch} ${css.branchActive}` : css.branch}
-                onClick={() => { selectBranch(item.branchId) }}
-                disabled={busy || item.branchId === displayState.activeBranchId}
-                aria-current={item.branchId === displayState.activeBranchId ? 'true' : undefined}
-              >
-                <IconBranchOutlineRegular size={13} /> {item.label}
-              </button>
-              {item.forkNodeId !== undefined && (
-                <span className={css.branchFork}>{t('research.forkedFrom', { node: item.forkNodeId })}</span>
-              )}
-              <div className={css.branchTreeNodes}>
-                {item.nodeIds.map((nodeId) => {
-                  const node = displayState.nodes[nodeId]
-                  if (node === undefined) return null
-                  return (
-                    <button
-                      key={node.nodeId}
-                      type="button"
-                      className={node.nodeId === displayState.selectedNodeId ? `${css.treeNode} ${css.nodeSelected}` : css.treeNode}
-                      onClick={() => { selectNode(node.nodeId) }}
-                      disabled={busy || node.nodeId === displayState.selectedNodeId}
-                      data-research-node={node.nodeId}
-                      aria-current={node.nodeId === displayState.selectedNodeId ? 'true' : undefined}
-                    >
-                      <span className={css.treeNodeTitle}>
-                        <span>{stageText(node.stage, t)}</span>
-                        <span className={css.treeNodeArtifact}>{latestArtifact(displayState, node)?.title ?? t('research.emptyArtifact')}</span>
-                      </span>
-                      <span className={css.nodeStatus}>{statusText(node.status, t)}</span>
-                    </button>
-                  )
-                })}
-              </div>
+          <div className={css.sectionTools}>
+            <div className={css.viewToggle} role="group" aria-label={t('research.branchView')}>
+              <Tooltip label={t('research.branchMap')} side="bottom" delayMs={400}>
+                <button
+                  type="button"
+                  className={branchView === 'map' ? `${css.viewToggleButton} ${css.viewToggleButtonActive}` : css.viewToggleButton}
+                  onClick={() => { setBranchView('map') }}
+                  aria-label={t('research.branchMap')}
+                  aria-pressed={branchView === 'map'}
+                >
+                  <IconWorkspaceTreeOutlineRegular size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip label={t('research.branchList')} side="bottom" delayMs={400}>
+                <button
+                  type="button"
+                  className={branchView === 'list' ? `${css.viewToggleButton} ${css.viewToggleButtonActive}` : css.viewToggleButton}
+                  onClick={() => { setBranchView('list') }}
+                  aria-label={t('research.branchList')}
+                  aria-pressed={branchView === 'list'}
+                >
+                  <IconFlatListOutlineRegular size={13} />
+                </button>
+              </Tooltip>
             </div>
-          ))}
+            <span className={css.sectionBadge}>{allBranches.length}</span>
+          </div>
         </div>
+        {branchView === 'map' ? (
+          <div className={css.branchMap} aria-label={t('research.branchMap')} role="tree">
+            {allBranches.map((item) => {
+              const forkNode = item.forkNodeId === undefined ? undefined : displayState.nodes[item.forkNodeId]
+              const nodes = item.nodeIds
+                .map(nodeId => displayState.nodes[nodeId])
+                .filter((node): node is ResearchNode => node !== undefined)
+              const isActive = item.branchId === displayState.activeBranchId
+              return (
+                <div
+                  key={item.branchId}
+                  className={isActive ? `${css.branchMapLane} ${css.branchMapLaneActive}` : css.branchMapLane}
+                  data-research-branch={item.branchId}
+                  role="treeitem"
+                  aria-label={branchLabel(item, item.branchId)}
+                  aria-current={isActive ? 'true' : undefined}
+                >
+                  <div className={css.branchMapLaneHeader}>
+                    <div className={css.branchMapLaneIdentity}>
+                      <button
+                        type="button"
+                        className={isActive ? `${css.branchMapLabel} ${css.branchMapLabelActive}` : css.branchMapLabel}
+                        onClick={() => { selectBranch(item.branchId) }}
+                        disabled={busy || isActive}
+                        aria-current={isActive ? 'true' : undefined}
+                      >
+                        <IconBranchOutlineRegular size={13} />
+                        <span>{branchLabel(item, item.branchId)}</span>
+                      </button>
+                      {isActive && <span className={css.branchMapCurrent}>{t('research.current')}</span>}
+                    </div>
+                    <span className={css.branchMapCount}>{t(nodes.length === 1 ? 'research.node.one' : 'research.node.other', { count: nodes.length })}</span>
+                  </div>
+                  {forkNode !== undefined && (
+                    <button
+                      type="button"
+                      className={css.branchMapOrigin}
+                      onClick={() => { selectNode(forkNode.nodeId) }}
+                      disabled={busy || forkNode.nodeId === displayState.selectedNodeId}
+                      aria-current={forkNode.nodeId === displayState.selectedNodeId ? 'true' : undefined}
+                    >
+                      <IconBranchOutlineRegular size={11} />
+                      <span>{t('research.forkedFrom', { node: stageText(forkNode.stage, t) })}</span>
+                    </button>
+                  )}
+                  <div className={css.branchMapLaneSteps} role="group">
+                    {nodes.map((node, index) => (
+                      <div key={node.nodeId} className={css.branchMapLaneStep}>
+                        <button
+                          type="button"
+                          className={node.nodeId === displayState.selectedNodeId ? `${css.branchMapNode} ${css.nodeSelected}` : css.branchMapNode}
+                          onClick={() => { selectNode(node.nodeId) }}
+                          disabled={busy || node.nodeId === displayState.selectedNodeId}
+                          data-research-node={node.nodeId}
+                          aria-current={node.nodeId === displayState.selectedNodeId ? 'true' : undefined}
+                        >
+                          <span className={css.branchMapNodeMarker} aria-hidden="true">{index + 1}</span>
+                          <span className={css.branchMapNodeCopy}>
+                            <span className={css.branchMapNodeTitle}>{stageText(node.stage, t)}</span>
+                            <span className={css.branchMapNodeArtifact}>{latestArtifact(displayState, node)?.title ?? t('research.emptyArtifact')}</span>
+                          </span>
+                          <span className={css.branchMapNodeMeta} data-status={node.status}>{statusText(node.status, t)}</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className={css.branchTreeCanvas}>
+            <div className={css.branchTree} aria-label={t('research.branchList')} role="tree">
+              {rootBranches.map((rootBranch) => {
+                const renderBranch = (branchItem: ResearchBranch, level: number): ReactNode => {
+                  const forkNode = branchItem.forkNodeId === undefined ? undefined : displayState.nodes[branchItem.forkNodeId]
+                  const isActive = branchItem.branchId === displayState.activeBranchId
+                  const nodes = branchItem.nodeIds
+                    .filter(nodeId => nodeId !== branchItem.forkNodeId)
+                    .map(nodeId => displayState.nodes[nodeId])
+                    .filter((node): node is ResearchNode => node !== undefined)
+                  return (
+                    <div
+                      key={branchItem.branchId}
+                      className={level === 0 ? `${css.branchTreeBranch} ${css.branchTreeBranchRoot}` : css.branchTreeBranch}
+                      data-research-branch={branchItem.branchId}
+                      role="treeitem"
+                      aria-level={level + 1}
+                      aria-expanded="true"
+                    >
+                      <button
+                        type="button"
+                        className={isActive ? `${css.branchTreeHeader} ${css.branchTreeHeaderActive}` : css.branchTreeHeader}
+                        onClick={() => { selectBranch(branchItem.branchId) }}
+                        disabled={busy || isActive}
+                        aria-current={isActive ? 'true' : undefined}
+                      >
+                        <span className={css.branchTreeMarker} aria-hidden="true"><IconBranchOutlineRegular size={13} /></span>
+                        <span className={css.branchTreeHeaderCopy}>
+                          <span className={css.branchTreeHeaderTitle}>{branchLabel(branchItem, branchItem.branchId)}</span>
+                          <span className={css.branchTreeHeaderMeta}>{t(nodes.length === 1 ? 'research.node.one' : 'research.node.other', { count: nodes.length })}</span>
+                        </span>
+                        {isActive && <span className={css.branchTreeCurrent}>{t('research.current')}</span>}
+                      </button>
+                      {forkNode !== undefined && (
+                        <button
+                          type="button"
+                          className={css.branchTreeOrigin}
+                          onClick={() => { selectNode(forkNode.nodeId) }}
+                          disabled={busy || forkNode.nodeId === displayState.selectedNodeId}
+                          aria-current={forkNode.nodeId === displayState.selectedNodeId ? 'true' : undefined}
+                        >
+                          <span className={css.branchTreeOriginLine} aria-hidden="true" />
+                          <span>{t('research.forkedFrom', { node: stageText(forkNode.stage, t) })}</span>
+                        </button>
+                      )}
+                      {nodes.length > 0 && (
+                        <div className={css.branchTreeNodes} role="group">
+                          {nodes.map((node, index) => {
+                            const children = branchTreeForks.get(node.nodeId) ?? []
+                            return (
+                              <div key={node.nodeId} className={css.branchTreePathNode}>
+                                <button
+                                  type="button"
+                                  className={node.nodeId === displayState.selectedNodeId ? `${css.treeNode} ${css.treeNodeSelected}` : css.treeNode}
+                                  onClick={() => { selectNode(node.nodeId) }}
+                                  disabled={busy || node.nodeId === displayState.selectedNodeId}
+                                  data-research-node={node.nodeId}
+                                  aria-current={node.nodeId === displayState.selectedNodeId ? 'true' : undefined}
+                                >
+                                  <span className={css.treeNodeMarker} aria-hidden="true">{index + 1}</span>
+                                  <span className={css.treeNodeTitle}>
+                                    <span>{stageText(node.stage, t)}</span>
+                                    <span className={css.treeNodeArtifact}>{latestArtifact(displayState, node)?.title ?? t('research.emptyArtifact')}</span>
+                                  </span>
+                                  <span className={css.treeNodeStatus} data-status={node.status}>{statusText(node.status, t)}</span>
+                                </button>
+                                {children.length > 0 && (
+                                  <div className={css.branchTreeChildren} role="group">
+                                    {children.map(child => renderBranch(child, level + 1))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+                return renderBranch(rootBranch, 0)
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className={css.section}>

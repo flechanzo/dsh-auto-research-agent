@@ -14,6 +14,7 @@ import {
   DESKTOP_HOST_RUNTIME_FILES,
   DESKTOP_PACKAGES_DIR,
   DESKTOP_PACKAGE_SET_FILE,
+  assertDesktopResearchPackages,
   readDesktopCorePackageSet,
   verifyDesktopCoreLockfile,
 } from '../src/core-package-set.ts'
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:stage-packages', async () => {
       copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
       cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
+      assertDesktopResearchPackages(readDesktopCorePackageSet(BUILD_ROOT, release.version).packages.map(entry => entry.name))
       createRuntimeProjectMetadata(BUILD_ROOT, release)
     })
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:lockfile', () => runPnpm(['install', '--lockfile-only']))
@@ -132,6 +134,12 @@ async function main(): Promise<void> {
     const targetName = resolveDesktopBuildTarget()
     const target = { platform: process.platform, arch: targetName.endsWith('arm64') ? 'arm64' : 'x64' }
     const modules = join(BUILD_ROOT, 'node_modules')
+    const researchPreset = join(modules, '@deepseek-ai', 'dsh-web-app', 'presets', 'research.patch.yml')
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:research-bundle', async () => {
+      if (!existsSync(researchPreset)) {
+        throw new Error('desktop runtime: @deepseek-ai/dsh-web-app is missing presets/research.patch.yml')
+      }
+    })
     const officeManifest = JSON.parse(readFileSync(join(modules, '@deepseek-ai/libreoffice-kit/package.json'), 'utf8'))
     const officeEngine = selectOfficeEngine(officeManifest, target)
     mkdirSync(DSH_OUTPUT_ROOT, { recursive: true })

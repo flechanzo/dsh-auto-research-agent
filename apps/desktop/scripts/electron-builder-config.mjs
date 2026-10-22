@@ -90,7 +90,14 @@ export function createElectronBuilderConfig(
   if (windowsSigner !== undefined) {
     installWindowsNsisBootstrapSigner({ sign: windowsSigner })
   }
-  const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
+  // A local unsigned Windows package is still a packaged Electron application.
+  // When its dotenv explicitly selects production, keep the official feed in
+  // app-update.yml so it can discover signed releases. Test and unspecified
+  // unsigned builds remain offline and cannot accidentally point at a release
+  // destination.
+  const update = unsigned && env.DSH_DESKTOP_AUTO_UPDATE_ENV?.trim() !== 'production'
+    ? undefined
+    : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
   if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
   // electron-builder merges extraMetadata into the packaged manifest, so a build version here reaches
   // the artifact names, the update feed, and the installed app.getVersion() the updater compares against.

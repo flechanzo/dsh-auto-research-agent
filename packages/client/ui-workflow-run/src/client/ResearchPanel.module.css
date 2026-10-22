@@ -21,7 +21,6 @@
 .finalPlan,
 .mainTranscript {
   min-width: 0;
-  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-bg-module-platform);
   box-shadow: var(--dsw-elevation-soft);
@@ -165,6 +164,50 @@
   gap: 10px;
 }
 
+.sectionTools,
+.viewToggle {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sectionTools {
+  flex: none;
+  gap: 8px;
+}
+
+.viewToggle {
+  gap: 2px;
+  padding: 2px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.viewToggleButton {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.viewToggleButton:hover,
+.viewToggleButton:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.viewToggleButtonActive {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  color: var(--dsw-alias-state-business-primary);
+}
+
 .sectionTitle {
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
@@ -193,33 +236,469 @@
   overflow-x: auto;
   padding-bottom: 2px;
   scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .branchTree {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 280px;
-  overflow-y: auto;
+  gap: 0;
+  align-self: stretch;
+  width: 100%;
+  max-height: none;
+  min-width: 0;
+  padding: 4px 2px 6px 1px;
+  overflow: visible;
+}
+
+.branchTreeSection {
+  min-height: 600px;
 }
 
 .branchTreeBranch {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin-left: 16px;
+  padding-left: 16px;
+}
+
+.branchTreeBranch::before {
+  position: absolute;
+  top: 0;
+  bottom: 12px;
+  left: 6px;
+  width: 0.5px;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.branchTreeBranch::after {
+  position: absolute;
+  top: 18px;
+  left: 6px;
+  width: 10px;
+  height: 0.5px;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.branchTreeBranchRoot {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.branchTreeBranchRoot::before,
+.branchTreeBranchRoot::after {
+  display: none;
+}
+
+.branchTreeHeader {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 6px 8px 6px 7px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.branchTreeHeader:hover,
+.branchTreeHeader:focus-visible {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchTreeHeaderActive {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchTreeMarker {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.branchTreeHeaderCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.branchTreeHeaderTitle,
+.branchTreeHeaderMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branchTreeHeaderTitle {
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.branchTreeHeaderMeta,
+.branchTreeCurrent {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.branchTreeCurrent {
+  padding: 1px 5px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.branchTreeOrigin {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 0 12px;
+  padding: 1px 5px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branchTreeOrigin:hover,
+.branchTreeOrigin:focus-visible {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchTreeOriginLine {
+  width: 8px;
+  height: 0.5px;
+  flex: none;
+  background: var(--dsw-alias-border-l2);
+}
+
+.branchMap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: stretch;
+  width: 100%;
+  max-height: 320px;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 1px 2px 3px 1px;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.branchMapLane {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  align-self: stretch;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 8px 8px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-left: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.branchMapLaneActive {
+  border-left-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+
+.branchMapLaneHeader,
+.branchMapLaneSteps,
+.branchMapLaneStep {
+  display: flex;
+  align-items: center;
+}
+
+.branchMapLaneHeader {
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.branchMapLaneIdentity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.branchMapLaneSteps {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  align-self: stretch;
+  margin-left: 5px;
+  padding-left: 8px;
+  border-left: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.branchMapLaneStep {
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.branchMapLaneArrow {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  width: 11px;
+  height: 11px;
+}
+
+.branchMapCurrent,
+.branchMapCount {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.branchMapCount {
+  padding: 1px 5px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.branchMapCurrent {
+  padding: 1px 5px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.branchMapLabel,
+.branchMapOrigin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+  white-space: nowrap;
+}
+
+.branchMapLabel {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  padding: 3px 5px;
+  text-align: left;
+}
+
+.branchMapOrigin {
+  align-self: flex-start;
+  gap: 4px;
+  padding: 1px 4px 1px 5px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.branchMapLabel:hover,
+.branchMapLabel:focus-visible,
+.branchMapOrigin:hover,
+.branchMapOrigin:focus-visible {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchMapLabelActive {
+  border-color: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchMapNode {
+  display: grid;
+  position: relative;
+  z-index: 1;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 5px 6px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.branchMapNode:hover,
+.branchMapNode:focus-visible {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchMapNodeMarker {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.branchMapNodeCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.branchMapNodeTitle,
+.branchMapNodeArtifact,
+.branchMapNodeMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branchMapNodeTitle {
+  color: var(--dsw-alias-label-primary);
+}
+
+.branchMapNodeMeta {
+  justify-self: end;
+  padding: 1px 5px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.branchMapNodeMeta[data-status='active'],
+.branchMapNodeMeta[data-status='pending'] {
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.branchMapNodeMeta[data-status='awaiting-confirmation'] {
+  background: var(--dsw-alias-state-warn-tertiary);
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.branchMapNodeMeta[data-status='confirmed'],
+.branchMapNodeMeta[data-status='completed'] {
+  background: var(--dsw-alias-state-success-tertiary);
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.branchMapNodeMeta[data-status='rejected'] {
+  background: var(--dsw-alias-state-error-secondary);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.branchMapNodeArtifact {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.branchMapNode.nodeSelected .branchMapNodeMarker {
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-on-business-primary);
+}
+
+.branchMapNode.nodeSelected {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary);
 }
 
 .branchTreeNodes {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-left: 10px;
-  padding-left: 12px;
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  margin: 0 0 2px 12px;
+  padding: 3px 0 3px 10px;
+  border-left: 0.5px dashed var(--dsw-alias-border-l2);
 }
 
-.branch,
 .node {
   flex: none;
   border: 0.5px solid var(--dsw-alias-border-l2);
@@ -232,18 +711,8 @@
   transition: border-color .16s ease, background .16s ease, color .16s ease;
 }
 
-.branch {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 6px;
-  padding: 6px 9px;
-}
-
-.branch:hover,
 .treeNode:hover,
 .node:hover,
-.branch:focus-visible,
 .treeNode:focus-visible,
 .node:focus-visible {
   border-color: var(--dsw-alias-state-business-primary);
@@ -251,20 +720,16 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.branchFork {
-  padding-left: 10px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
-  line-height: 16px;
-}
-
 .treeNode {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  width: 100%;
   min-width: 0;
-  padding: 6px 8px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 5px 7px 5px 5px;
   border: 0.5px solid transparent;
   border-radius: var(--dsw-radius-sm);
   background: transparent;
@@ -273,6 +738,27 @@
   font: inherit;
   font-size: 12px;
   text-align: left;
+}
+
+.treeNode:hover,
+.treeNode:focus-visible {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.treeNodeMarker {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 20px;
 }
 
 .treeNodeTitle {
@@ -291,11 +777,63 @@
   white-space: nowrap;
 }
 
-.branchActive,
-.nodeSelected {
+.treeNodeStatus {
+  justify-self: end;
+  padding: 1px 5px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.treeNodeStatus[data-status='active'],
+.treeNodeStatus[data-status='pending'] {
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.treeNodeStatus[data-status='awaiting-confirmation'] {
+  background: var(--dsw-alias-state-warn-tertiary);
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.treeNodeStatus[data-status='confirmed'],
+.treeNodeStatus[data-status='completed'] {
+  background: var(--dsw-alias-state-success-tertiary);
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.treeNodeStatus[data-status='rejected'] {
+  background: var(--dsw-alias-state-error-secondary);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.treeNodeSelected {
   border-color: var(--dsw-alias-state-business-primary);
   background: var(--dsw-alias-interactive-bg-hover-accent);
   color: var(--dsw-alias-label-primary);
+}
+
+.treeNodeSelected .treeNodeMarker {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-on-business-primary);
+}
+
+.branchTreePathNode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.branchTreeChildren {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  margin: 1px 0 4px;
 }
 
 .timeline {
@@ -378,6 +916,8 @@
   font-size: 12px;
   line-height: 1.6;
   scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .notice,
@@ -474,7 +1014,7 @@
 
 .feedback:focus {
   border-color: var(--dsw-alias-state-business-primary);
-  box-shadow: 0 0 0 2px var(--dsw-alias-interactive-bg-hover-accent);
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
 }
 
 .uploadPanel {
@@ -674,6 +1214,8 @@
   font-size: 13px;
   line-height: 1.6;
   scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .mainTranscriptEmpty {
@@ -749,7 +1291,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .branch,
+  .viewToggleButton,
+  .branchMapLabel,
+  .branchMapNode,
+  .branchTreeHeader,
+  .branchTreeOrigin,
   .treeNode,
   .node,
   .button,
@@ -757,5 +1303,204 @@
   .dangerButton,
   .mainTranscriptMessage {
     transition: none;
+  }
+}
+
+/* The alternate view is an expanded, horizontally navigable branch tree. */
+.branchTreeCanvas {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+  height: clamp(520px, 68vh, 760px);
+  min-height: 520px;
+  box-sizing: border-box;
+  overflow: auto;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 22px 28px 34px;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.branchTreeCanvas .branchTree {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  max-height: none;
+  box-sizing: border-box;
+  gap: 0;
+  overflow: visible;
+  padding: 12px 48px 40px;
+}
+
+.branchTreeCanvas .branchTreeBranch {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.branchTreeCanvas .branchTreeBranch::before,
+.branchTreeCanvas .branchTreeBranch::after {
+  display: none;
+}
+
+.branchTreeCanvas .branchTreeHeader {
+  width: 248px;
+  min-height: 64px;
+  border-radius: 12px;
+  box-shadow: var(--dsw-elevation-soft);
+}
+
+.branchTreeCanvas .branchTreeBranchRoot > .branchTreeHeader {
+  border-width: 1px;
+}
+
+.branchTreeCanvas .branchTreeOrigin {
+  align-self: center;
+  margin: 10px 0 0;
+}
+
+.branchTreeCanvas .branchTreeNodes {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: max-content;
+  min-width: 0;
+  margin: 28px 0 0;
+  padding: 0 0 24px;
+  border: 0;
+}
+
+.branchTreeCanvas .branchTreeNodes::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0.5px;
+  height: auto;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.branchTreeCanvas .branchTreePathNode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+}
+
+.branchTreeCanvas .branchTreePathNode > .treeNode {
+  position: relative;
+  flex: 0 0 248px;
+  width: 248px;
+  min-height: 72px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-elevation-soft);
+}
+
+.branchTreeCanvas .branchTreePathNode + .branchTreePathNode::before {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  width: 0.5px;
+  height: 20px;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.branchTreeCanvas .branchTreeChildren {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 28px;
+  width: max-content;
+  min-width: 0;
+  margin: 28px 0 0;
+  padding: 32px 12px 0;
+}
+
+.branchTreeCanvas .branchTreeChildren::before {
+  position: absolute;
+  top: 0;
+  left: 108px;
+  right: 108px;
+  height: 0.5px;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.branchTreeCanvas .branchTreeChildren::after {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  width: 0.5px;
+  height: 28px;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.branchTreeCanvas .branchTreeChildren > .branchTreeBranch {
+  position: relative;
+  flex: 0 0 220px;
+  width: 220px;
+}
+
+.branchTreeCanvas .branchTreeChildren > .branchTreeBranch::before {
+  display: block;
+  top: -32px;
+  bottom: auto;
+  left: 50%;
+  width: 0.5px;
+  height: 32px;
+  background: var(--dsw-alias-border-l2);
+}
+
+.branchTreeCanvas .branchTreeChildren > .branchTreeBranch > .branchTreeHeader {
+  width: 220px;
+}
+
+.branchTreeCanvas .treeNodeSelected {
+  box-shadow: var(--dsw-elevation-soft), inset 2px 0 0 var(--dsw-alias-state-business-primary);
+}
+
+@media (max-width: 560px) {
+  .branchTreeSection {
+    min-height: 560px;
+  }
+
+  .branchTreeCanvas {
+    height: 520px;
+    min-height: 520px;
+    padding-inline: 16px;
+  }
+
+  .branchTreeCanvas .branchTree {
+    justify-content: flex-start;
+    padding-inline: 32px;
   }
 }

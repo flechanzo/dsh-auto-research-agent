@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   DESKTOP_PACKAGES_DIR,
   DESKTOP_PACKAGE_SET_FILE,
+  assertDesktopResearchPackages,
   desktopCorePackageOverrides,
   desktopDshPackageSpec,
   parseDesktopCorePackageSet,
@@ -57,6 +58,15 @@ afterEach(() => {
 })
 
 describe('desktop core package set', () => {
+  it('requires the Web research bundle and controller in every prepared runtime', () => {
+    expect(() => assertDesktopResearchPackages(['@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host']))
+      .toThrow(/automatic research agent/u)
+    expect(() => assertDesktopResearchPackages([
+      '@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host',
+      '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-api-research-controller',
+    ])).not.toThrow()
+  })
+
   it('pins the direct dsh dependency and every internal package to local tarballs', () => {
     const { root } = packageSetProject()
     const packageSet = verifyDesktopCorePackageSet(root, '1.2.3')

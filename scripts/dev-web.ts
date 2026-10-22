@@ -42,8 +42,8 @@ import { globSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
-import { build } from 'tsdown'
-import type { TsdownBundle } from 'tsdown'
+import { buildWithConfigs, mergeConfig, resolveUserConfig } from 'tsdown'
+import type { InlineConfig, TsdownBundle, UserConfig } from 'tsdown'
 import {
   CLIENT_BUILD_PROFILE_SELECTOR,
   clientBuildProcessEnvironment,
@@ -52,6 +52,8 @@ import {
 import { pnpmInvocation } from './pnpm-invocation.ts'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+
+let devWebConfigGeneration = 0
 
 /** Client-face type emit feeding every tsdown lib entry in the watch set. */
 const CLIENT_TYPE_PROGRAM = 'tsconfig.client.json'
@@ -168,6 +170,51 @@ export function discoverLibraryDirs(root = repoRoot): string[] {
   return dirs
 }
 
+type ConfigFunction = (
+  inlineConfig: InlineConfig,
+  context: { readonly ci: boolean; readonly rootConfig?: UserConfig },
+) => UserConfig | readonly UserConfig[] | Promise<UserConfig | readonly UserConfig[]>
+
+function isConfigFunction(value: unknown): value is ConfigFunction {
+  return typeof value === 'function'
+}
+
+/**
+ * Load one tsdown config through the current tsx/esm process. Loading each
+ * file in sequence matters on Node 22.20: concurrent native config imports
+ * can leave `import-without-cache` without a load result.
+ * @param file - config file to load.
+ * @param inlineConfig - options supplied by the development watcher.
+ * @param rootConfig - root config passed to workspace config functions.
+ * @returns package-local user configs, including their resolved cwd.
+ */
+async function loadDevWebConfig(
+  file: string,
+  inlineConfig: InlineConfig,
+  rootConfig?: UserConfig,
+  generation = String(devWebConfigGeneration),
+): Promise<UserConfig[]> {
+  const imported = await import(`${pathToFileURL(file).href}?dev-web-config=${generation}`)
+  const exported: unknown = imported !== null
+    && typeof imported === 'object'
+    && 'default' in imported
+    ? imported.default
+    : imported
+  const configContext = rootConfig === undefined
+    ? { ci: process.env.CI !== undefined && process.env.CI !== 'false' }
+    : { ci: process.env.CI !== undefined && process.env.CI !== 'false', rootConfig }
+  const evaluated = isConfigFunction(exported)
+    ? await exported(inlineConfig, configContext)
+    : exported
+  const configs = Array.isArray(evaluated) ? [...evaluated] : [evaluated]
+  if (configs.length === 0) configs.push({})
+  if (configs.some(config => config === null || typeof config !== 'object')) {
+    throw new TypeError(`dev-web: ${file} must export tsdown user config objects`)
+  }
+  const cwd = dirname(file)
+  return configs.map(config => ({ ...config, cwd: config.cwd === undefined ? cwd : resolve(cwd, config.cwd) }))
+}
+
 /**
  * Start the tsdown watch build used by `pnpm run dev:web`.
  * @param root - repository or fixture root passed to tsdown.
@@ -180,13 +227,18 @@ export async function watchClientPlugins(
   pluginDirs: readonly string[],
   pollInterval?: number,
 ): Promise<TsdownBundle[]> {
+  const configGeneration = `${Date.now()}-${devWebConfigGeneration++}`
   let resolveInitialBuilds: (() => void) | undefined
   const initialBuilds = new Promise<void>((resolve) => { resolveInitialBuilds = resolve })
   const initialized = new WeakSet<object>()
   const readiness: { expectedBuilds?: number; initializedBuilds: number } = { initializedBuilds: 0 }
-  const bundles = await build({
+  const inlineConfig: InlineConfig = {
     cwd: root,
     workspace: [...pluginDirs],
+    // Keep tsdown's secondary config loads on tsx as well. Node 22.20's native
+    // TypeScript loader can leave the import-without-cache hook without a load
+    // result while watch mode reloads workspace configs.
+    configLoader: 'tsx',
     watch: true,
     hooks: {
       'build:done': ({ options }) => {
@@ -202,7 +254,37 @@ export async function watchClientPlugins(
     ...pollInterval !== undefined
       ? { inputOptions: { watch: { watcher: { usePolling: true, pollInterval } } } }
       : {},
-  })
+  }
+
+  // Resolve the root and package configs one at a time. tsdown's workspace
+  // resolver uses Promise.all here, which is what triggers Node 22.20's
+  // import-without-cache race when dozens of TypeScript configs are loaded.
+  const rootConfigFile = join(root, 'tsdown.config.ts')
+  const rootConfigs = await loadDevWebConfig(rootConfigFile, inlineConfig, undefined, configGeneration)
+  const configDeps = new Set<string>([rootConfigFile])
+  const resolvedConfigs = []
+  for (const rootConfig of rootConfigs) {
+    const normalized = mergeConfig(rootConfig, inlineConfig)
+    for (const pluginDir of pluginDirs) {
+      const configFile = join(root, pluginDir, 'tsdown.config.ts')
+      const packageConfigs = await loadDevWebConfig(configFile, inlineConfig, rootConfig, configGeneration)
+      configDeps.add(configFile)
+      for (const packageConfig of packageConfigs) {
+        const merged = mergeConfig(normalized, packageConfig)
+        if (merged.workspace && !merged.entry) continue
+        resolvedConfigs.push(...await resolveUserConfig(merged, inlineConfig, configDeps))
+      }
+    }
+  }
+  const bundles = await buildWithConfigs(
+    resolvedConfigs,
+    configDeps,
+    () => {
+      void watchClientPlugins(root, pluginDirs, pollInterval).catch((error) => {
+        console.error('dev-web: failed to reload tsdown config', error)
+      })
+    },
+  )
   readiness.expectedBuilds = bundles.length
   if (readiness.initializedBuilds >= readiness.expectedBuilds) resolveInitialBuilds?.()
   await initialBuilds

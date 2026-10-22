@@ -291,7 +291,7 @@ Apple 工具使用 macOS 当前活动网络服务的 HTTP/HTTPS 代理。配置�
 pnpm run package:desktop:win:x64:unsigned
 ```
 
-该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。签名打包和上传命令仍遵循正式发布要求。
+该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，清除签名凭据，且不生成发布完成记录。使用默认的 `test` 或未设置部署环境时不写入更新元数据；被 Git 忽略的 `.env.windows` 显式设置 `DSH_DESKTOP_AUTO_UPDATE_ENV=production` 时，会嵌入官方 `https://download.deepseek.com` 更新源，让目录包能够检查签名发布。该包携带当前的 `@deepseek-ai/dsh-web-app` 科研 preset 和控制器，因此 Desktop 更新后自动科研智能体仍与桌面壳保持一致。签名打包和上传命令仍遵循正式发布要求。
 
 ### Windows 安装界面
 

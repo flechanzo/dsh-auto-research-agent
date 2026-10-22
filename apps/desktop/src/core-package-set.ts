@@ -40,6 +40,27 @@ const INTEGRITY_PATTERN = /^sha512-[A-Za-z0-9+/]+={0,2}$/u
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const RELEASE_PACKAGES = [DSH_PACKAGE, DESKTOP_HOST_PACKAGE] as const
 
+/** First-party Web packages required for the Desktop automatic research agent. */
+export const DESKTOP_RESEARCH_PACKAGES = [
+  '@deepseek-ai/dsh-web-app',
+  '@deepseek-ai/dsh-api-research-controller',
+] as const
+
+/**
+ * Require the Web bundle and its Session-scoped research controller in a
+ * Desktop runtime package set.
+ * @param packageNames - Names selected for the immutable Desktop runtime.
+ * @returns Nothing.
+ * @throws When a release omits a package required by the shipped research preset.
+ */
+export function assertDesktopResearchPackages(packageNames: readonly string[]): void {
+  for (const packageName of DESKTOP_RESEARCH_PACKAGES) {
+    if (!packageNames.includes(packageName)) {
+      throw new Error(`desktop package set: missing ${packageName}; Desktop releases must ship the automatic research agent`)
+    }
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
