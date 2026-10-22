@@ -10,7 +10,6 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ResearchArtifact,
-  ResearchBranch,
   ResearchCommandValue,
   ResearchDirectionWeights,
   ResearchDirectionFocusId,
@@ -29,6 +28,8 @@ import {
   useResearchSession,
 } from './research-session-store.ts'
 import css from './ResearchPanel.module.css'
+import { ResearchBranchList } from './ResearchBranchList.tsx'
+import { ResearchFlowCanvas } from './ResearchFlowCanvas.tsx'
 
 /** Props for the session-scoped right-sidebar page. */
 export type ResearchPanelProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'workflowRun'> & ResearchPanelInjected
@@ -139,10 +140,6 @@ function selectedBranchNodes(state: ResearchState, node: ResearchNode): readonly
   return result
 }
 
-function branchLabel(branch: ResearchBranch | undefined, branchId: string): string {
-  return branch?.label ?? branchId
-}
-
 function innovationClaimPasses(artifact: ResearchArtifact | undefined): boolean {
   if (artifact === undefined || artifact.kind !== 'idea') return false
   const text = artifact.content.toLowerCase()
@@ -166,6 +163,8 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const [error, setError] = useState<string>()
   const [feedback, setFeedback] = useState('')
   const [branchView, setBranchView] = useState<'list' | 'map'>('map')
+  const [treeCollapsed, setTreeCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [listCollapsed, setListCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [choice, setChoice] = useState<'simulation' | 'plan'>('plan')
   const [directionWeights, setDirectionWeights] = useState<ResearchDirectionWeights>(DEFAULT_DIRECTION_WEIGHTS)
   const [literatureSources, setLiteratureSources] = useState<readonly ResearchLiteratureSourceId[]>(['arxiv', 'openreview', 'semantic-scholar', 'acl-anthology', 'openalex'])
@@ -188,20 +187,6 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     )),
     [displayState.branches],
   )
-  const rootBranches = useMemo(
-    () => allBranches.filter(item => item.forkNodeId === undefined),
-    [allBranches],
-  )
-  const branchTreeForks = useMemo(() => {
-    const children = new Map<string, ResearchBranch[]>()
-    for (const branch of allBranches) {
-      if (branch.forkNodeId === undefined) continue
-      const siblings = children.get(branch.forkNodeId) ?? []
-      siblings.push(branch)
-      children.set(branch.forkNodeId, siblings)
-    }
-    return children
-  }, [allBranches])
   const isHistorical = selected.nodeId !== branch?.nodeIds.at(-1)
   const sessionMismatch = selected.sourceSessionId !== undefined && selected.sourceSessionId !== workflowSessionId
   const canMutate = !isHistorical && !sessionMismatch
@@ -223,6 +208,15 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
     () => [...stageArtifacts].reverse().find(item => item.artifact.kind === 'plan')?.artifact,
     [stageArtifacts],
   )
+
+  const toggleTreeBranch = (branchId: string): void => {
+    setTreeCollapsed((previous) => {
+      const next = new Set(previous)
+      if (next.has(branchId)) next.delete(branchId)
+      else next.add(branchId)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (loadFailure !== undefined) setError(failureText(loadFailure, t))
@@ -366,6 +360,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
                   aria-pressed={branchView === 'map'}
                 >
                   <IconWorkspaceTreeOutlineRegular size={13} />
+                  <span className={css.viewToggleLabel}>{t('research.branchMap')}</span>
                 </button>
               </Tooltip>
               <Tooltip label={t('research.branchList')} side="bottom" delayMs={400}>
@@ -377,6 +372,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
                   aria-pressed={branchView === 'list'}
                 >
                   <IconFlatListOutlineRegular size={13} />
+                  <span className={css.viewToggleLabel}>{t('research.branchList')}</span>
                 </button>
               </Tooltip>
             </div>
@@ -384,159 +380,48 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
           </div>
         </div>
         {branchView === 'map' ? (
-          <div className={css.branchMap} aria-label={t('research.branchMap')} role="tree">
-            {allBranches.map((item) => {
-              const forkNode = item.forkNodeId === undefined ? undefined : displayState.nodes[item.forkNodeId]
-              const nodes = item.nodeIds
-                .map(nodeId => displayState.nodes[nodeId])
-                .filter((node): node is ResearchNode => node !== undefined)
-              const isActive = item.branchId === displayState.activeBranchId
-              return (
-                <div
-                  key={item.branchId}
-                  className={isActive ? `${css.branchMapLane} ${css.branchMapLaneActive}` : css.branchMapLane}
-                  data-research-branch={item.branchId}
-                  role="treeitem"
-                  aria-label={branchLabel(item, item.branchId)}
-                  aria-current={isActive ? 'true' : undefined}
-                >
-                  <div className={css.branchMapLaneHeader}>
-                    <div className={css.branchMapLaneIdentity}>
-                      <button
-                        type="button"
-                        className={isActive ? `${css.branchMapLabel} ${css.branchMapLabelActive}` : css.branchMapLabel}
-                        onClick={() => { selectBranch(item.branchId) }}
-                        disabled={busy || isActive}
-                        aria-current={isActive ? 'true' : undefined}
-                      >
-                        <IconBranchOutlineRegular size={13} />
-                        <span>{branchLabel(item, item.branchId)}</span>
-                      </button>
-                      {isActive && <span className={css.branchMapCurrent}>{t('research.current')}</span>}
-                    </div>
-                    <span className={css.branchMapCount}>{t(nodes.length === 1 ? 'research.node.one' : 'research.node.other', { count: nodes.length })}</span>
-                  </div>
-                  {forkNode !== undefined && (
-                    <button
-                      type="button"
-                      className={css.branchMapOrigin}
-                      onClick={() => { selectNode(forkNode.nodeId) }}
-                      disabled={busy || forkNode.nodeId === displayState.selectedNodeId}
-                      aria-current={forkNode.nodeId === displayState.selectedNodeId ? 'true' : undefined}
-                    >
-                      <IconBranchOutlineRegular size={11} />
-                      <span>{t('research.forkedFrom', { node: stageText(forkNode.stage, t) })}</span>
-                    </button>
-                  )}
-                  <div className={css.branchMapLaneSteps} role="group">
-                    {nodes.map((node, index) => (
-                      <div key={node.nodeId} className={css.branchMapLaneStep}>
-                        <button
-                          type="button"
-                          className={node.nodeId === displayState.selectedNodeId ? `${css.branchMapNode} ${css.nodeSelected}` : css.branchMapNode}
-                          onClick={() => { selectNode(node.nodeId) }}
-                          disabled={busy || node.nodeId === displayState.selectedNodeId}
-                          data-research-node={node.nodeId}
-                          aria-current={node.nodeId === displayState.selectedNodeId ? 'true' : undefined}
-                        >
-                          <span className={css.branchMapNodeMarker} aria-hidden="true">{index + 1}</span>
-                          <span className={css.branchMapNodeCopy}>
-                            <span className={css.branchMapNodeTitle}>{stageText(node.stage, t)}</span>
-                            <span className={css.branchMapNodeArtifact}>{latestArtifact(displayState, node)?.title ?? t('research.emptyArtifact')}</span>
-                          </span>
-                          <span className={css.branchMapNodeMeta} data-status={node.status}>{statusText(node.status, t)}</span>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <ResearchFlowCanvas
+            state={displayState}
+            selectedNodeId={displayState.selectedNodeId}
+            activeBranchId={displayState.activeBranchId}
+            stageText={stage => stageText(stage, t)}
+            statusText={status => statusText(status, t)}
+            emptyArtifact={t('research.emptyArtifact')}
+            currentLabel={t('research.current')}
+            nodeCountLabel={count => t(count === 1 ? 'research.node.one' : 'research.node.other', { count })}
+            branchViewLabel={t('research.branchMap')}
+            expandLabel={t('research.expand')}
+            collapseLabel={t('research.collapse')}
+            zoomInLabel={t('research.zoomIn')}
+            zoomOutLabel={t('research.zoomOut')}
+            fitViewLabel={t('research.fitView')}
+            restoreLayoutLabel={t('research.restoreLayout')}
+            layoutScope={String(workflowSessionId)}
+            collapsedBranchIds={treeCollapsed}
+            onToggleBranch={toggleTreeBranch}
+            onSelectNode={selectNode}
+            onSelectBranch={selectBranch}
+            onExpandAll={() => { setTreeCollapsed(new Set()) }}
+            onCollapseAll={() => { setTreeCollapsed(new Set(allBranches.map(item => item.branchId))) }}
+            disabled={busy}
+          />
         ) : (
-          <div className={css.branchTreeCanvas}>
-            <div className={css.branchTree} aria-label={t('research.branchList')} role="tree">
-              {rootBranches.map((rootBranch) => {
-                const renderBranch = (branchItem: ResearchBranch, level: number): ReactNode => {
-                  const forkNode = branchItem.forkNodeId === undefined ? undefined : displayState.nodes[branchItem.forkNodeId]
-                  const isActive = branchItem.branchId === displayState.activeBranchId
-                  const nodes = branchItem.nodeIds
-                    .filter(nodeId => nodeId !== branchItem.forkNodeId)
-                    .map(nodeId => displayState.nodes[nodeId])
-                    .filter((node): node is ResearchNode => node !== undefined)
-                  return (
-                    <div
-                      key={branchItem.branchId}
-                      className={level === 0 ? `${css.branchTreeBranch} ${css.branchTreeBranchRoot}` : css.branchTreeBranch}
-                      data-research-branch={branchItem.branchId}
-                      role="treeitem"
-                      aria-level={level + 1}
-                      aria-expanded="true"
-                    >
-                      <button
-                        type="button"
-                        className={isActive ? `${css.branchTreeHeader} ${css.branchTreeHeaderActive}` : css.branchTreeHeader}
-                        onClick={() => { selectBranch(branchItem.branchId) }}
-                        disabled={busy || isActive}
-                        aria-current={isActive ? 'true' : undefined}
-                      >
-                        <span className={css.branchTreeMarker} aria-hidden="true"><IconBranchOutlineRegular size={13} /></span>
-                        <span className={css.branchTreeHeaderCopy}>
-                          <span className={css.branchTreeHeaderTitle}>{branchLabel(branchItem, branchItem.branchId)}</span>
-                          <span className={css.branchTreeHeaderMeta}>{t(nodes.length === 1 ? 'research.node.one' : 'research.node.other', { count: nodes.length })}</span>
-                        </span>
-                        {isActive && <span className={css.branchTreeCurrent}>{t('research.current')}</span>}
-                      </button>
-                      {forkNode !== undefined && (
-                        <button
-                          type="button"
-                          className={css.branchTreeOrigin}
-                          onClick={() => { selectNode(forkNode.nodeId) }}
-                          disabled={busy || forkNode.nodeId === displayState.selectedNodeId}
-                          aria-current={forkNode.nodeId === displayState.selectedNodeId ? 'true' : undefined}
-                        >
-                          <span className={css.branchTreeOriginLine} aria-hidden="true" />
-                          <span>{t('research.forkedFrom', { node: stageText(forkNode.stage, t) })}</span>
-                        </button>
-                      )}
-                      {nodes.length > 0 && (
-                        <div className={css.branchTreeNodes} role="group">
-                          {nodes.map((node, index) => {
-                            const children = branchTreeForks.get(node.nodeId) ?? []
-                            return (
-                              <div key={node.nodeId} className={css.branchTreePathNode}>
-                                <button
-                                  type="button"
-                                  className={node.nodeId === displayState.selectedNodeId ? `${css.treeNode} ${css.treeNodeSelected}` : css.treeNode}
-                                  onClick={() => { selectNode(node.nodeId) }}
-                                  disabled={busy || node.nodeId === displayState.selectedNodeId}
-                                  data-research-node={node.nodeId}
-                                  aria-current={node.nodeId === displayState.selectedNodeId ? 'true' : undefined}
-                                >
-                                  <span className={css.treeNodeMarker} aria-hidden="true">{index + 1}</span>
-                                  <span className={css.treeNodeTitle}>
-                                    <span>{stageText(node.stage, t)}</span>
-                                    <span className={css.treeNodeArtifact}>{latestArtifact(displayState, node)?.title ?? t('research.emptyArtifact')}</span>
-                                  </span>
-                                  <span className={css.treeNodeStatus} data-status={node.status}>{statusText(node.status, t)}</span>
-                                </button>
-                                {children.length > 0 && (
-                                  <div className={css.branchTreeChildren} role="group">
-                                    {children.map(child => renderBranch(child, level + 1))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                }
-                return renderBranch(rootBranch, 0)
-              })}
-            </div>
-          </div>
+          <ResearchBranchList
+            state={displayState}
+            selectedNodeId={displayState.selectedNodeId}
+            stageText={stage => stageText(stage, t)}
+            statusText={status => statusText(status, t)}
+            emptyArtifact={t('research.emptyArtifact')}
+            t={t}
+            onSelectNode={selectNode}
+            onLocateNode={(nodeId) => {
+              void selectNode(nodeId)
+              setBranchView('map')
+            }}
+            collapsedNodeIds={listCollapsed}
+            onCollapsedNodeIdsChange={setListCollapsed}
+            disabled={busy}
+          />
         )}
       </section>
 

@@ -185,15 +185,23 @@
 
 .viewToggleButton {
   display: inline-flex;
-  width: 24px;
+  width: auto;
   height: 24px;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
   border: 0.5px solid transparent;
   border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
+}
+
+.viewToggleLabel {
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 .viewToggleButton:hover,
@@ -1325,6 +1333,64 @@
   scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.treeControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.treeZoomValue {
+  min-width: 38px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.branchTreeCanvasDragging {
+  cursor: grabbing;
+}
+
+.branchTreeViewport {
+  flex: none;
+  min-width: 100%;
+  min-height: 100%;
+  transition: transform .16s ease;
+}
+
+.treeMinimap {
+  position: sticky;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  width: 88px;
+  min-height: 34px;
+  margin: auto 0 0 auto;
+  padding: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 92%, transparent);
+  box-shadow: var(--dsw-elevation-soft);
+  pointer-events: none;
+}
+
+.treeMinimapBranch {
+  display: block;
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--dsw-alias-border-l3);
+}
+
+.treeMinimapBranch[data-active='true'] {
+  background: var(--dsw-alias-state-business-primary);
 }
 
 .branchTreeCanvas .branchTree {
