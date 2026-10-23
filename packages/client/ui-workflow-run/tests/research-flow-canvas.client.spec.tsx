@@ -133,6 +133,51 @@ describe('ResearchFlowCanvas', () => {
     expect(view.container.querySelector('[data-flow-canvas]')?.getAttribute('data-dragging')).toBe('false')
   })
 
+  it('keeps a node click intact until the drag threshold is crossed', () => {
+    const state = graphWithBranch()
+    const onSelectNode = vi.fn()
+    const view = render(
+      <ResearchFlowCanvas
+        state={state}
+        selectedNodeId={state.selectedNodeId}
+        activeBranchId={state.activeBranchId}
+        stageText={stage => stage}
+        statusText={status => status}
+        emptyArtifact="empty"
+        currentLabel="current"
+        nodeCountLabel={count => `${count} nodes`}
+        branchViewLabel="tree"
+        expandLabel="expand"
+        collapseLabel="collapse"
+        zoomInLabel="zoom in"
+        zoomOutLabel="zoom out"
+        fitViewLabel="fit view"
+        restoreLayoutLabel="restore automatic layout"
+        layoutScope="test-node-click"
+        collapsedBranchIds={new Set()}
+        onToggleBranch={vi.fn()}
+        onSelectNode={onSelectNode}
+        onSelectBranch={vi.fn()}
+        onExpandAll={vi.fn()}
+        onCollapseAll={vi.fn()}
+      />,
+    )
+    const canvas = view.container.querySelector('[role="tree"]') as HTMLElement
+    const node = view.container.querySelector('[data-research-node="node-2"]') as HTMLElement
+    const title = node.querySelector('button > span:nth-child(2)') as HTMLElement
+    const setPointerCapture = vi.fn()
+    Object.defineProperty(canvas, 'setPointerCapture', { configurable: true, value: setPointerCapture })
+    fireEvent.pointerDown(title, { button: 0, pointerId: 4, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(canvas, { pointerId: 4, clientX: 103, clientY: 102 })
+    fireEvent.pointerUp(title, { pointerId: 4, clientX: 103, clientY: 102 })
+    fireEvent.click(title)
+    expect(setPointerCapture).not.toHaveBeenCalled()
+    expect(onSelectNode).toHaveBeenCalledWith('node-2')
+    onSelectNode.mockClear()
+    fireEvent.click(node.querySelector('[data-status]') as HTMLElement)
+    expect(onSelectNode).toHaveBeenCalledWith('node-2')
+  })
+
   it('moves a node and suppresses selection for a drag while keeping clicks selectable', () => {
     const state = graphWithBranch()
     const onSelectNode = vi.fn()

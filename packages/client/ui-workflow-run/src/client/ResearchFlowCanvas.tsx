@@ -409,6 +409,7 @@ export function ResearchFlowCanvas({
     if (interaction === undefined || interaction.pointerId !== event.pointerId) return
     const distance = Math.hypot(event.clientX - interaction.startX, event.clientY - interaction.startY)
     if (distance < DRAG_THRESHOLD && !interaction.moved) return
+    const startedDragging = distance >= DRAG_THRESHOLD && !interaction.moved
     if (distance >= DRAG_THRESHOLD) interaction.moved = true
     if (interaction.kind === 'pan') {
       updateViewport({
@@ -417,6 +418,12 @@ export function ResearchFlowCanvas({
         zoom: interaction.startViewport.zoom,
       })
       return
+    }
+    if (startedDragging) {
+      const canvas = canvasRef.current
+      if (canvas !== null && typeof canvas.setPointerCapture === 'function') canvas.setPointerCapture(event.pointerId)
+      setDragging(true)
+      setDraggingNodeId(interaction.nodeId)
     }
     const nextPoint = {
       x: interaction.startPoint.x + (event.clientX - interaction.startX) / viewportRef.current.zoom,
@@ -436,7 +443,9 @@ export function ResearchFlowCanvas({
     setDragging(false)
     setDraggingNodeId(undefined)
     const canvas = canvasRef.current
-    if (canvas !== null && typeof canvas.releasePointerCapture === 'function') canvas.releasePointerCapture(event.pointerId)
+    if (canvas !== null && typeof canvas.releasePointerCapture === 'function' && (typeof canvas.hasPointerCapture !== 'function' || canvas.hasPointerCapture(event.pointerId))) {
+      canvas.releasePointerCapture(event.pointerId)
+    }
   }
 
   const onNodePointerDown = (event: PointerEvent<HTMLDivElement>, nodeId: string): void => {
@@ -451,10 +460,8 @@ export function ResearchFlowCanvas({
       kind: 'node', pointerId: event.pointerId, nodeId, startX: event.clientX, startY: event.clientY,
       startPoint: point, moved: false,
     }
-    const canvas = canvasRef.current
-    if (canvas !== null && typeof canvas.setPointerCapture === 'function') canvas.setPointerCapture(event.pointerId)
-    setDragging(true)
-    setDraggingNodeId(nodeId)
+    setDragging(false)
+    setDraggingNodeId(undefined)
   }
 
   const restoreAutomaticLayout = (): void => {
