@@ -81,6 +81,15 @@ function statusText(status: ReturnType<typeof selectedResearchNode>['status'], t
   }
 }
 
+function decisionText(decision: NonNullable<ResearchNode['userDecision']>, t: ResearchPanelProps['t']): string {
+  switch (decision) {
+    case 'confirm': return t('research.decision.confirm')
+    case 'reject': return t('research.decision.reject')
+    case 'feedback': return t('research.decision.feedback')
+    default: return decision satisfies never
+  }
+}
+
 function initialResearchState(label: string): ResearchState {
   const node: ResearchNode = {
     nodeId: 'node-1', branchId: 'branch-1', stage: 'paper-upload', status: 'active', artifactRefs: [],
@@ -150,6 +159,11 @@ function failureText(failure: { readonly message: string; readonly code: string 
   return failure.code === 'research/stale' ? t('research.error.stale') : t('research.error.operation', { message: failure.message })
 }
 
+function summaryText(content: string, limit = 240): string {
+  const summary = content.replace(/\s+/g, ' ').trim()
+  return summary.length > limit ? `${summary.slice(0, limit - 1)}…` : summary
+}
+
 /** Render the staged research workflow, its branches, artifacts, and checkpoints. */
 export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }: ResearchPanelProps): ReactNode {
   const { tab } = useTabInfo()
@@ -192,22 +206,21 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
   const canMutate = !isHistorical && !sessionMismatch
   const canContinue = isHistorical && selected.stage !== 'final-plan'
   const artifact = latestArtifact(displayState, selected)
-  const stageArtifacts = useMemo(() => {
-    const seen = new Set<string>()
-    const result: Array<{ readonly node: ResearchNode; readonly artifact: ResearchArtifact }> = []
-    for (const node of branchNodes) {
-      const item = latestArtifact(displayState, node)
-      if (item === undefined || seen.has(item.artifactId)) continue
-      seen.add(item.artifactId)
-      result.push({ node, artifact: item })
-    }
-    return result
-  }, [branchNodes, displayState])
   const ideaNeedsReview = selected.stage === 'idea-generation' || selected.stage === 'idea-refinement'
-  const finalPlanArtifact = useMemo(
-    () => [...stageArtifacts].reverse().find(item => item.artifact.kind === 'plan')?.artifact,
-    [stageArtifacts],
-  )
+  const parentNode = selected.parentNodeId === undefined ? undefined : displayState.nodes[selected.parentNodeId]
+  const childCount = Object.values(displayState.nodes).filter(node => node.parentNodeId === selected.nodeId).length
+  const contentSummary = artifact === undefined || artifact.content.trim() === ''
+    ? t('research.emptyArtifact')
+    : summaryText(artifact.content)
+
+  const focusResearchContent = (): void => {
+    if (typeof document === 'undefined') return
+    const target = [...document.querySelectorAll<HTMLElement>('[data-research-main-node]')]
+      .find(element => element.dataset.researchMainNode === selected.nodeId)
+    if (target !== undefined && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 
   const toggleTreeBranch = (branchId: string): void => {
     setTreeCollapsed((previous) => {
@@ -415,7 +428,7 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
             t={t}
             onSelectNode={selectNode}
             onLocateNode={(nodeId) => {
-              void selectNode(nodeId)
+              selectNode(nodeId)
               setBranchView('map')
             }}
             collapsedNodeIds={listCollapsed}
@@ -447,23 +460,54 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
         </div>
       </section>
 
-      <section className={css.card} data-research-node-content={selected.nodeId}>
+      <section className={css.card} data-research-node-detail={selected.nodeId}>
         <div className={css.cardHeader}>
           <div className={css.cardIdentity}>
-            <div className={css.cardKicker}>{stageText(selected.stage, t)}</div>
+            <div className={css.cardKicker}>{t('research.nodeDetails')}</div>
             <div className={css.cardTitle}>{artifact?.title ?? stageText(selected.stage, t)}</div>
           </div>
           <span className={css.statusPill} data-status={selected.status}>{statusText(selected.status, t)}</span>
         </div>
-        <pre className={css.content}>{artifact?.content || t('research.emptyArtifact')}</pre>
+        <div className={css.detailActions}>
+          <button type="button" className={css.button} disabled={busy} onClick={focusResearchContent}>
+            {t('research.viewFullContent')}
+          </button>
+        </div>
+        <section className={css.detailGroup} aria-label={t('research.nodeInfo')}>
+          <div className={css.subtle}>{t('research.nodeInfo')}</div>
+          <dl className={css.detailGrid}>
+            <div className={css.detailItem}><dt>{t('research.nodeId')}</dt><dd>{selected.nodeId}</dd></div>
+            <div className={css.detailItem}><dt>{t('research.planLabel')}</dt><dd>{displayState.branches[selected.branchId]?.label ?? selected.branchId}</dd></div>
+            <div className={css.detailItem}><dt>{t('research.stageType')}</dt><dd>{stageText(selected.stage, t)}</dd></div>
+            <div className={css.detailItem}><dt>{t('research.parentNode')}</dt><dd>{parentNode === undefined ? '—' : parentNode.nodeId}</dd></div>
+            <div className={css.detailItem}><dt>{t('research.childNodes')}</dt><dd>{childCount}</dd></div>
+            <div className={css.detailItem}><dt>{t('research.artifactCount')}</dt><dd>{selected.artifactRefs.length}</dd></div>
+          </dl>
+        </section>
+        <section className={css.detailGroup} aria-label={t('research.contentSummary')}>
+          <div className={css.subtle}>{t('research.contentSummary')}</div>
+          <p className={css.detailSummary}>{contentSummary}</p>
+          {artifact?.source !== undefined && <div className={css.detailMeta}>{t('research.source')}: {artifact.source}</div>}
+          {artifact !== undefined && <div className={css.detailMeta}>{t('research.createdAt')}: {new Date(artifact.createdAt).toLocaleString()}</div>}
+        </section>
+        {(selected.userDecision !== undefined || selected.userNote !== undefined) && (
+          <section className={css.detailGroup} aria-label={t('research.executionInfo')}>
+            <div className={css.subtle}>{t('research.executionInfo')}</div>
+            {selected.userDecision !== undefined && <div className={css.detailMeta}>{t('research.decision')}: {decisionText(selected.userDecision, t)}</div>}
+            {selected.userNote !== undefined && <p className={css.detailSummary}>{selected.userNote}</p>}
+          </section>
+        )}
         {artifact?.evaluation !== undefined && (
-          <div className={artifact.evaluation.overlap || artifact.evaluation.score < artifact.evaluation.threshold
-            ? css.notice
-            : css.successNotice}>
-            {t('research.evaluation', { score: artifact.evaluation.score, threshold: artifact.evaluation.threshold })}
-            {' '}{artifact.evaluation.overlap ? t('research.overlap') : t('research.noOverlap')}
-            <div>{artifact.evaluation.rationale}</div>
-          </div>
+          <section className={css.detailGroup} aria-label={t('research.evaluationSummary')}>
+            <div className={css.subtle}>{t('research.evaluationSummary')}</div>
+            <div className={artifact.evaluation.overlap || artifact.evaluation.score < artifact.evaluation.threshold
+              ? css.notice
+              : css.successNotice}>
+              {t('research.evaluation', { score: artifact.evaluation.score, threshold: artifact.evaluation.threshold })}
+              {' '}{artifact.evaluation.overlap ? t('research.overlap') : t('research.noOverlap')}
+              <div>{summaryText(artifact.evaluation.rationale, 180)}</div>
+            </div>
+          </section>
         )}
         {artifact?.kind === 'plan' && artifact.source !== undefined && (
           <div className={css.successNotice}>{t('research.planWritten', { path: artifact.source })}</div>
@@ -587,32 +631,6 @@ export function ResearchPanel({ useTabInfo, sessionId, research, fileUpload, t }
           </div>
         )}
       </section>
-      {stageArtifacts.length > 0 && (
-        <section className={css.transcript} aria-label={t('research.stageContents')}>
-          <div className={css.subtle}>{t('research.stageContents')}</div>
-          {stageArtifacts.map(({ node, artifact: item }) => (
-            <article
-              key={node.nodeId}
-              className={css.transcriptItem}
-              data-research-task={node.nodeId}
-            >
-              <div className={css.transcriptTitle}>{stageText(node.stage, t)} · {item.title}</div>
-              <pre className={css.content}>{item.content}</pre>
-            </article>
-          ))}
-        </section>
-      )}
-      {finalPlanArtifact !== undefined && (
-        <section className={css.finalPlan} aria-label={t('research.finalPlanOutput')}>
-          <div className={css.cardTitle}>{t('research.finalPlanOutput')}</div>
-          <div className={finalPlanArtifact.source === undefined ? css.notice : css.successNotice}>
-            {finalPlanArtifact.source === undefined
-              ? t('research.planPreview')
-              : t('research.planWritten', { path: finalPlanArtifact.source })}
-          </div>
-          <pre className={css.content}>{finalPlanArtifact.content}</pre>
-        </section>
-      )}
     </div>
   )
 }

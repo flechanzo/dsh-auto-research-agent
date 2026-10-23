@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   ResearchArtifact,
@@ -9,6 +9,7 @@ import type {
   ResearchState,
 } from '@deepseek-ai/dsh-api-research-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { MarkdownText, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkflowRunKey } from './locales.ts'
 import {
   publishResearchSession,
@@ -95,6 +96,30 @@ function publishCommand(
 export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTranscriptMainProps): ReactNode {
   const snapshot = useResearchSession(research, sessionId)
   const [expandedNodes, setExpandedNodes] = useState<ReadonlySet<string>>(() => new Set())
+  const transcriptRef = useRef<HTMLElement>(null)
+  const markdownLabels = useMemo<MarkdownLabels>(() => ({
+    code: {
+      copyLabel: t('research.copy'),
+      copiedLabel: t('research.copied'),
+      toolbarLabels: {
+        codeLabel: t('research.codeBlockTitle'),
+        wrapLabel: t('research.codeWrap'),
+        unwrapLabel: t('research.codeUnwrap'),
+      },
+    },
+    footnotes: t('research.footnotes'),
+  }), [t])
+
+  useEffect(() => {
+    const selectedId = snapshot?.state.selectedNodeId
+    if (selectedId === undefined) return
+    setExpandedNodes(current => current.has(selectedId) ? current : new Set([...current, selectedId]))
+    const target = [...(transcriptRef.current?.querySelectorAll<HTMLElement>('[data-research-main-node]') ?? [])]
+      .find(element => element.dataset.researchMainNode === selectedId)
+    if (target !== undefined && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [snapshot?.state.selectedNodeId])
   if (snapshot === undefined) return null
   // `read` returns an in-memory upload root for sessions that have never
   // started research. Keep the main Chat surface unchanged until a paper has
@@ -124,9 +149,9 @@ export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTrans
     toggleNode(nodeId)
   }
   return (
-    <section className={css.mainTranscript} data-research-main-transcript data-research-selected-node={selectedId}>
+    <section ref={transcriptRef} className={css.mainTranscript} data-research-main-transcript data-research-selected-node={selectedId}>
       <div className={css.mainTranscriptHeader}>
-        <span className={css.cardTitle}>{t('research.stageContents')}</span>
+        <span className={css.cardTitle}>{t('research.contentTitle')}</span>
         <span className={css.subtle}>{t('research.branch')}: {viewedBranch?.label}</span>
       </div>
       <div className={css.mainTranscriptMessages}>
@@ -168,15 +193,17 @@ export function ResearchTranscriptMain({ sessionId, research, t }: ResearchTrans
                 : artifacts.map(artifact => (
                   <div key={artifact.artifactId} className={css.mainTranscriptArtifact}>
                     <div className={css.mainTranscriptArtifactTitle}>{artifact.title}</div>
-                    <pre
+                    <div
                       className={css.mainTranscriptContent}
+                      data-research-main-content
                       onClick={(event) => {
                         event.stopPropagation()
+                        if (event.target instanceof Element && event.target.closest('a,button') !== null) return
                         toggleNode(node.nodeId)
                       }}
                     >
-                      {artifact.content}
-                    </pre>
+                      <MarkdownText text={artifact.content} labels={markdownLabels} />
+                    </div>
                   </div>
                 ))}
             </article>
