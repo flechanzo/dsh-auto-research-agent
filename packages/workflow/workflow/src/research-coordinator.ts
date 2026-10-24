@@ -809,6 +809,9 @@ function isRetryableLiteratureError(error: unknown): boolean {
   if (diagnostic.category === 'http-429' || diagnostic.category === 'http-5xx' || diagnostic.category === 'connection-timeout') return true
   const code = literatureErrorCode(error)
   if (code === 'WEB_PROXY_ERROR') return true
+  if (diagnostic.category === 'proxy-connection') {
+    return /ECONNRESET|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH/iu.test(diagnostic.detail)
+  }
   return diagnostic.category === 'dns-resolution' && /EAI_AGAIN|ETIMEDOUT/iu.test(diagnostic.detail)
 }
 
@@ -840,11 +843,10 @@ async function fetchText(web: WebRuntime, url: string, signal?: AbortSignal): Pr
 }
 
 function describeLiteratureError(error: unknown): LiteratureErrorDiagnostic {
-  const message = error instanceof Error ? error.message : String(error)
-  const detail = message.replace(/\s+/gu, ' ').trim().slice(0, 240) || 'unknown error'
+  const detail = literatureErrorText(error).replace(/\s+/gu, ' ').trim().slice(0, 240) || 'unknown error'
   const code = literatureErrorCode(error)
   if (code === 'WEB_BLOCKED_URL' || /non-public (?:IP|IPv4)|NAT64/iu.test(detail)) return { detail, category: 'non-public-address' }
-  if (code === 'WEB_FETCH_TIMEOUT' || /tim(?:e|ed) out|timeout/iu.test(detail)) return { detail, category: 'connection-timeout' }
+  if (code === 'WEB_FETCH_TIMEOUT' || /tim(?:e|ed) out|timeout|ETIMEDOUT/iu.test(detail)) return { detail, category: 'connection-timeout' }
   if (/\bHTTP 429\b/iu.test(detail)) return { detail, category: 'http-429' }
   if (/\bHTTP 5\d{2}\b/iu.test(detail)) return { detail, category: 'http-5xx' }
   if (code === 'WEB_PROXY_ERROR' || /\bproxy\b|und_err_proxy/iu.test(detail)) return { detail, category: 'proxy-connection' }
@@ -857,9 +859,34 @@ function describeLiteratureError(error: unknown): LiteratureErrorDiagnostic {
 }
 
 function literatureErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined
-  const candidate = error as { readonly code?: unknown }
-  return typeof candidate.code === 'string' ? candidate.code : undefined
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
+  return typeof error.code === 'string' ? error.code : undefined
+}
+
+function literatureErrorText(error: unknown): string {
+  const parts: string[] = []
+  const seen = new Set<object>()
+  let current: unknown = error
+  for (let depth = 0; depth < 4 && current !== undefined; depth += 1) {
+    if (current instanceof Error) {
+      parts.push(current.message)
+      if ('code' in current && typeof current.code === 'string') parts.push(current.code)
+      if ('cause' in current) current = current.cause
+      else break
+      continue
+    }
+    if (typeof current !== 'object' || current === null) {
+      parts.push(String(current))
+      break
+    }
+    if (seen.has(current)) break
+    seen.add(current)
+    if ('code' in current && typeof current.code === 'string') parts.push(current.code)
+    if ('message' in current && typeof current.message === 'string') parts.push(current.message)
+    if ('cause' in current) current = current.cause
+    else break
+  }
+  return parts.join(': ')
 }
 
 /** Keep explicit index requests below the HTTP fetch provider's URL limit. */
