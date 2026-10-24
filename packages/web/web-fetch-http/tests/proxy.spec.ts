@@ -85,6 +85,17 @@ describe('fetching through a proxy', () => {
     expect(resolve).not.toHaveBeenCalled()
   })
 
+  it('labels a proxied transport failure without weakening address checks', async () => {
+    disposeProxy = await installProxy()
+    vi.spyOn(publicHttpNetwork, 'requestVia').mockRejectedValue(new Error('connect ECONNREFUSED'))
+
+    await expect(new HttpFetchProvider(limits).fetch({ url: proxyTarget }))
+      .rejects.toThrow(expect.objectContaining({
+        code: 'WEB_PROVIDER_ERROR',
+        message: expect.stringContaining('web proxy request failed'),
+      }))
+  })
+
   it('keeps resolving and pinning a hop the policy does not proxy', async () => {
     const resolve = vi.spyOn(publicHttpNetwork, 'resolve')
       .mockResolvedValue([{ address: '127.0.0.1', family: 4 }])

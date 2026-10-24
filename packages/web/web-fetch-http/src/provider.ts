@@ -133,7 +133,14 @@ export class HttpFetchProvider implements WebFetchProvider {
       // nothing and let a proxy on this machine reach the very service they keep out of reach.
       const route = proxyRouteFor(url)
       if (route.proxied && !isNonPublicIpLiteral(url.hostname)) {
-        return await publicHttpNetwork.requestVia(route.dispatcher, url, headers, signal)
+        try {
+          return await publicHttpNetwork.requestVia(route.dispatcher, url, headers, signal)
+        } catch (error: unknown) {
+          // Keep the route in the diagnostic. The proxy performs origin DNS, so a
+          // failed proxied hop must not be reported as a direct DNS or address failure.
+          if (error instanceof WebError || signal.aborted) throw error
+          throw new WebError(`web proxy request failed: ${String(error)}`, 'WEB_PROVIDER_ERROR', { cause: error })
+        }
       }
       const addresses = await this.resolveAddresses(url.hostname, signal)
       return await publicHttpNetwork.request(url, addresses, headers, signal)

@@ -469,7 +469,21 @@ describe('createWebLiteratureSearcher', () => {
 
     await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, {
       sources: ['arxiv', 'openalex'],
-    })).rejects.toThrow('literature search failed for all selected sources: arxiv (HTTP 503); openalex (HTTP 503)')
+    })).rejects.toThrow('diagnostics: arxiv=http-5xx; openalex=http-5xx')
+  })
+
+  it('classifies a proxied connection failure separately from DNS and address blocks', async () => {
+    const web = Object.setPrototypeOf({
+      async fetch(request: { readonly url: string }) {
+        throw Object.assign(new Error(`web proxy request failed for ${request.url}: connect ECONNREFUSED`), {
+          code: 'WEB_PROVIDER_ERROR',
+        })
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, {
+      sources: ['openalex'],
+    })).rejects.toThrow('diagnostics: openalex=proxy-connection')
   })
 
   it('bounds encoded queries so long problem summaries reach the indexes', async () => {
