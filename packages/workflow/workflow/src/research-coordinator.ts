@@ -727,7 +727,9 @@ export function createWebLiteratureSearcher(web: WebRuntime, maxResults: number)
       // backend failed so the caller can distinguish network/provider failure from
       // a valid empty search.
       if (collected.length === 0 && failures.length === outcomes.length && failures.length > 0) {
-        throw new Error(`literature search failed for all selected sources: ${failures.map(failure => `${failure.source} (${failure.error})`).join('; ')}`)
+        const details = failures.map(failure => `${failure.source} (${failure.error})`).join('; ')
+        const diagnostics = failures.map(failure => `${failure.source}=${failure.category}`).join('; ')
+        throw new Error(`literature search failed for all selected sources: ${details}; diagnostics: ${diagnostics}`)
       }
       const seen = new Set<string>()
       return collected.filter((source) => {
@@ -747,6 +749,23 @@ interface LiteratureSourceFailure {
   readonly source: ResearchLiteratureSourceId
   readonly sources: readonly []
   readonly error: string
+  readonly category: LiteratureErrorCategory
+}
+
+/** Failure categories surfaced when every configured literature index is unavailable. */
+type LiteratureErrorCategory =
+  | 'dns-resolution'
+  | 'non-public-address'
+  | 'proxy-connection'
+  | 'connection-timeout'
+  | 'http-429'
+  | 'http-5xx'
+  | 'response-format'
+  | 'network'
+
+interface LiteratureErrorDiagnostic {
+  readonly detail: string
+  readonly category: LiteratureErrorCategory
 }
 
 /** Search one explicit paper index while retaining diagnostics for unavailable indexes. */
@@ -757,21 +776,56 @@ async function searchLiteratureSource(
   signal: AbortSignal | undefined,
   maxResults: number,
 ): Promise<LiteratureSourceSuccess | LiteratureSourceFailure> {
-  try {
-    let sources: readonly ResearchLiteratureSource[]
-    switch (source) {
-      case 'arxiv': sources = await searchArxiv(web, query, signal, maxResults); break
-      case 'openreview': sources = await searchOpenReview(web, query, signal, maxResults); break
-      case 'semantic-scholar': sources = await searchSemanticScholar(web, query, signal, maxResults); break
-      case 'acl-anthology': sources = await searchAclAnthology(web, query, signal, maxResults); break
-      case 'openalex': sources = await searchOpenAlex(web, query, signal, maxResults); break
-      default: return unreachableLiteratureSource(source)
+  let lastError: unknown
+  for (let attempt = 0; attempt < LITERATURE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      let sources: readonly ResearchLiteratureSource[]
+      switch (source) {
+        case 'arxiv': sources = await searchArxiv(web, query, signal, maxResults); break
+        case 'openreview': sources = await searchOpenReview(web, query, signal, maxResults); break
+        case 'semantic-scholar': sources = await searchSemanticScholar(web, query, signal, maxResults); break
+        case 'acl-anthology': sources = await searchAclAnthology(web, query, signal, maxResults); break
+        case 'openalex': sources = await searchOpenAlex(web, query, signal, maxResults); break
+        default: return unreachableLiteratureSource(source)
+      }
+      return { sources }
+    } catch (error: unknown) {
+      signal?.throwIfAborted()
+      lastError = error
+      if (attempt + 1 >= LITERATURE_MAX_ATTEMPTS || !isRetryableLiteratureError(error)) break
+      await waitForLiteratureRetry(signal, attempt)
     }
-    return { sources }
-  } catch (error: unknown) {
-    signal?.throwIfAborted()
-    return { source, sources: [], error: describeLiteratureError(error) }
   }
+  const diagnostic = describeLiteratureError(lastError)
+  return { source, sources: [], error: diagnostic.detail, category: diagnostic.category }
+}
+
+const LITERATURE_MAX_ATTEMPTS = 2
+const LITERATURE_RETRY_DELAY_MS = 50
+
+function isRetryableLiteratureError(error: unknown): boolean {
+  const diagnostic = describeLiteratureError(error)
+  if (diagnostic.category === 'non-public-address' || diagnostic.category === 'response-format') return false
+  if (diagnostic.category === 'http-429' || diagnostic.category === 'http-5xx' || diagnostic.category === 'connection-timeout') return true
+  const code = literatureErrorCode(error)
+  if (code === 'WEB_PROXY_ERROR') return true
+  return diagnostic.category === 'dns-resolution' && /EAI_AGAIN|ETIMEDOUT/iu.test(diagnostic.detail)
+}
+
+function waitForLiteratureRetry(signal: AbortSignal | undefined, attempt: number): Promise<void> {
+  const delay = LITERATURE_RETRY_DELAY_MS * (attempt + 1)
+  signal?.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal?.reason)
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, delay)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 async function fetchText(web: WebRuntime, url: string, signal?: AbortSignal): Promise<string> {
@@ -785,9 +839,27 @@ async function fetchText(web: WebRuntime, url: string, signal?: AbortSignal): Pr
   return result.body.content
 }
 
-function describeLiteratureError(error: unknown): string {
+function describeLiteratureError(error: unknown): LiteratureErrorDiagnostic {
   const message = error instanceof Error ? error.message : String(error)
-  return message.replace(/\s+/gu, ' ').trim().slice(0, 240) || 'unknown error'
+  const detail = message.replace(/\s+/gu, ' ').trim().slice(0, 240) || 'unknown error'
+  const code = literatureErrorCode(error)
+  if (code === 'WEB_BLOCKED_URL' || /non-public (?:IP|IPv4)|NAT64/iu.test(detail)) return { detail, category: 'non-public-address' }
+  if (code === 'WEB_FETCH_TIMEOUT' || /tim(?:e|ed) out|timeout/iu.test(detail)) return { detail, category: 'connection-timeout' }
+  if (/\bHTTP 429\b/iu.test(detail)) return { detail, category: 'http-429' }
+  if (/\bHTTP 5\d{2}\b/iu.test(detail)) return { detail, category: 'http-5xx' }
+  if (code === 'WEB_PROXY_ERROR' || /\bproxy\b|und_err_proxy/iu.test(detail)) return { detail, category: 'proxy-connection' }
+  if (code === 'WEB_UNSUPPORTED_CONTENT_TYPE' || /^empty response body$/iu.test(detail) || error instanceof SyntaxError || /JSON parse|unexpected token|malformed response|response body/iu.test(detail)) {
+    return { detail, category: 'response-format' }
+  }
+  if (code === 'WEB_PROVIDER_ERROR' && /DNS|EAI_|ENOTFOUND|getaddrinfo/iu.test(detail)) return { detail, category: 'dns-resolution' }
+  if (/DNS|EAI_|ENOTFOUND|getaddrinfo/iu.test(detail)) return { detail, category: 'dns-resolution' }
+  return { detail, category: 'network' }
+}
+
+function literatureErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const candidate = error as { readonly code?: unknown }
+  return typeof candidate.code === 'string' ? candidate.code : undefined
 }
 
 /** Keep explicit index requests below the HTTP fetch provider's URL limit. */

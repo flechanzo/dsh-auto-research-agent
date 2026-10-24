@@ -400,8 +400,41 @@ describe('createWebLiteratureSearcher', () => {
       },
     }, WebRuntime.prototype) as WebRuntime
 
-    await createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['semantic-scholar'] })
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['semantic-scholar'] })).resolves.toEqual([])
     expect(searchCalls).toBe(0)
+  })
+
+  it('retries transient timeouts once and keeps the successful source result', async () => {
+    let calls = 0
+    const xml = '<feed><entry><id>https://arxiv.org/abs/1000.0001</id><title>Recovered paper</title></entry></feed>'
+    const web = Object.setPrototypeOf({
+      async fetch(request: { readonly url: string }) {
+        calls += 1
+        if (calls === 1) throw Object.assign(new Error('web fetch timed out'), { code: 'WEB_FETCH_TIMEOUT' })
+        return { url: request.url, statusCode: 200, truncated: false, body: { kind: 'text' as const, content: xml } }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['arxiv'] })).resolves.toMatchObject([
+      { provider: 'arxiv', title: 'Recovered paper' },
+    ])
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry a non-public address block and reports failure categories', async () => {
+    let calls = 0
+    const web = Object.setPrototypeOf({
+      async fetch(request: { readonly url: string }) {
+        calls += 1
+        if (request.url.includes('arxiv.org')) throw Object.assign(new Error('URL hostname resolves to a non-public IP address'), { code: 'WEB_BLOCKED_URL' })
+        return { url: request.url, statusCode: 429, truncated: false, body: { kind: 'text' as const, content: 'rate limited' } }
+      },
+    }, WebRuntime.prototype) as WebRuntime
+
+    await expect(createWebLiteratureSearcher(web, 4).search('transformer', undefined, { sources: ['arxiv', 'openalex'] })).rejects.toThrow(
+      'diagnostics: arxiv=non-public-address; openalex=http-429',
+    )
+    expect(calls).toBe(3)
   })
 
   it('keeps index results when another index is unavailable', async () => {
