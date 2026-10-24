@@ -142,6 +142,16 @@ describe('public-network policy', () => {
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_BLOCKED_URL' }))
   })
 
+  it('rejects Clash Fake-IP answers from both reserved ranges', async () => {
+    const resolver = vi.fn(async () => [
+      { address: '198.18.0.155', family: 4 },
+      { address: '2001:2::a5', family: 6 },
+    ])
+
+    await expect(resolvePublicAddresses('fake-ip.test', new AbortController().signal, resolver))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_BLOCKED_URL' }))
+  })
+
   it('rejects empty and invalid resolver results', async () => {
     await expect(resolvePublicAddresses('empty.test', new AbortController().signal, async () => []))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
